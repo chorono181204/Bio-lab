@@ -325,8 +325,8 @@ const LJPage: React.FC = () => {
               mean: Number(chosen.mean || 0),
               sd: Number(chosen.sd || 0),
               unit: chosen.unit || undefined,
-              cv: chosen.cv || undefined,
-              cvRef: chosen.cvRef || undefined,
+              cv: chosen.cv !== null && chosen.cv !== undefined ? Number(chosen.cv) : undefined,
+              cvRef: chosen.cvRef !== null && chosen.cvRef !== undefined ? Number(chosen.cvRef) : undefined,
               exp: chosen.exp || undefined,
               method: chosen.method || undefined
             } : null
@@ -335,7 +335,8 @@ const LJPage: React.FC = () => {
               chosen: chosen,
               cv: chosen?.cv,
               mean: chosen?.mean,
-              sd: chosen?.sd
+              sd: chosen?.sd,
+              rawResponse: response
             })
           } else {
             next[lvl.id] = null

@@ -4,7 +4,7 @@ import { exportLimitsByLotMachine, importLimitsFromXlsx } from '../utils/limitsI
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useApi, usePagination } from '../hooks'
-import { limitService, QCLimit, analyteService, lotService, qcLevelService } from '../services'
+import { limitService, QCLimit, analyteService, lotService, qcLevelService, machineService, biasMethodService } from '../services'
 import QCLimitForm from '../components/limits/QCLimitForm'
 
 // Types are now imported from services
@@ -53,12 +53,55 @@ const LimitsPage: React.FC = () => {
   
   const [checkedAnalytes, setCheckedAnalytes] = useState<string[]>([])
   const [qcLevelOptions, setQcLevelOptions] = useState<{ value: string; label: string }[]>([])
+  const [biasMethods, setBiasMethods] = useState<{ id: string; name: string }[]>([])
   
   // Debounced search
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchText(searchText), 500)
     return () => clearTimeout(timer)
   }, [searchText])
+
+  // Load machines when selectedLotId changes (for edit form)
+  useEffect(() => {
+    ;(async () => {
+      try {
+        console.log('=== MACHINE LOADING useEffect ===')
+        console.log('selectedLotId:', selectedLotId)
+        console.log('current machineOptions length:', machineOptions.length)
+        
+        if (!selectedLotId) { 
+          console.log('No selectedLotId, clearing machineOptions')
+          setMachineOptions([])
+          return 
+        }
+        
+        console.log('Loading machines for lot:', selectedLotId)
+        const response = await machineService.list({ lotId: selectedLotId, page: 1, pageSize: 1000 })
+        console.log('Machine response:', response)
+        
+        if (response.success && response.data) {
+          const machines = 'items' in response.data ? response.data.items : response.data
+          console.log('Machines loaded:', machines)
+          
+          if (machines?.length) {
+            const opts = machines.map((m: any) => ({ value: m.id, label: `${m.deviceCode} - ${m.name}` }))
+            console.log('Machine options created:', opts)
+            setMachineOptions(opts)
+            console.log('Machine options set, new length:', opts.length)
+          } else {
+            console.log('No machines found, clearing options')
+            setMachineOptions([])
+          }
+        } else {
+          console.log('Failed to load machines, clearing options')
+          setMachineOptions([])
+        }
+      } catch (error) {
+        console.error('Error loading machines:', error)
+        setMachineOptions([])
+      }
+    })()
+  }, [selectedLotId])
 
   // Load data on mount and when filters change
   useEffect(() => {
@@ -95,10 +138,11 @@ const LimitsPage: React.FC = () => {
     const loadInitialData = async () => {
       try {
         setFiltersLoading(true)
-        const [lotsResponse, analytesResponse, qcLevelsResponse] = await Promise.all([
+        const [lotsResponse, analytesResponse, qcLevelsResponse, biasMethodsResponse] = await Promise.all([
           lotService.list({ options: true }),
           analyteService.list({ options: true }),
           qcLevelService.list({ options: true }),
+          biasMethodService.list({ options: true }),
         ])
         
         if (!mounted) return
@@ -275,7 +319,12 @@ const LimitsPage: React.FC = () => {
       title: 'Cách tính BIAS', 
       dataIndex: 'biasMethod', 
       width: 160,
-      render: (biasMethodId: string) => biasMethodId || '-'
+      render: (biasMethodId: string) => {
+        if (!biasMethodId) return '-'
+        // Find the bias method name by ID
+        const biasMethod = biasMethods.find(method => method.id === biasMethodId)
+        return biasMethod ? biasMethod.name : biasMethodId
+      }
     },
     { title: 'Phương pháp', dataIndex: 'method', width: 160 },
     { title: 'Tạo bởi', dataIndex: 'createdBy', width: 120 },
@@ -311,7 +360,13 @@ const LimitsPage: React.FC = () => {
   ], [pagination.page, pagination.pageSize])
 
   // Event handlers
-  const onEdit = (record: QCLimit) => {
+  const onEdit = async (record: QCLimit) => {
+    console.log('=== ON EDIT DEBUG ===')
+    console.log('record:', record)
+    console.log('current machineOptions:', machineOptions)
+    console.log('current selectedLotId:', selectedLotId)
+    console.log('current lotOptions:', lotOptions)
+    
     setEditing(record)
     
     // Find the correct IDs for the form values
@@ -320,7 +375,29 @@ const LimitsPage: React.FC = () => {
     const qcLevelOption = qcLevelOptions.find(q => q.label === record.qcLevel)
     const machineOption = machineOptions.find(m => m.value === record.machineId)
     
-    form.setFieldsValue({
+    console.log('Found options:', {
+      analyteOption,
+      lotOption,
+      qcLevelOption,
+      machineOption
+    })
+    
+    // If lotOptions not loaded yet, wait for them
+    if (lotOptions.length === 0) {
+      console.log('Lot options not loaded yet, waiting...')
+      // Wait a bit for lotOptions to load
+      await new Promise(resolve => setTimeout(resolve, 100))
+      const updatedLotOption = lotOptions.find(l => l.value === record.lot)
+      if (updatedLotOption?.id) {
+        console.log('Found lot option after wait:', updatedLotOption)
+        setSelectedLotId(updatedLotOption.id)
+      }
+    } else if (lotOption?.id) {
+      console.log('Setting selectedLotId to:', lotOption.id)
+      setSelectedLotId(lotOption.id)
+    }
+    
+    const formValues = {
       analyteId: analyteOption?.value || record.analyteId,
       lot: lotOption?.value || record.lot,
       qcLevel: qcLevelOption?.value || record.qcLevel,
@@ -338,16 +415,15 @@ const LimitsPage: React.FC = () => {
       method: record.method,
       note: record.note,
       biasMethod: record.biasMethod,
-    } as any)
-    
-    // Ensure machine options loaded for this lot
-    try {
-      const lotOption = lotOptions.find(l => l.value === record.lot)
-      if (lotOption?.id) setSelectedLotId(lotOption.id)
-    } catch (error) {
-      console.error('Error setting lot ID:', error)
     }
     
+    console.log('Setting form values:', formValues)
+    console.log('machineId value:', formValues.machineId)
+    console.log('machineOptions at form set:', machineOptions)
+    
+    form.setFieldsValue(formValues as any)
+    
+    console.log('Form values set, opening modal...')
     setOpen(true)
   }
 
@@ -376,10 +452,15 @@ const LimitsPage: React.FC = () => {
         return
       }
 
+      // Map QC level name to ID if needed
+      const qcLevelId = selectedQcLevel?.value || 
+        qcLevelOptions.find(qc => qc.label === values.qcLevel)?.value || 
+        values.qcLevel
+
       const payload = {
         analyteId: selectedAnalyte?.value || values.analyteId,
         lotId: selectedLot?.id || values.lot,
-        qcLevelId: selectedQcLevel?.value || values.qcLevel,
+        qcLevelId: qcLevelId,
         machineId: selectedMachine?.value || values.machineId,
         unit: values.unit,
         decimals: values.decimals || 2,
@@ -399,8 +480,10 @@ const LimitsPage: React.FC = () => {
       console.log('=== FRONTEND PAYLOAD DEBUG ===')
       console.log('selectedQcLevel:', selectedQcLevel)
       console.log('values.qcLevel:', values.qcLevel)
+      console.log('qcLevelId (mapped):', qcLevelId)
       console.log('qcLevelId in payload:', payload.qcLevelId)
       console.log('qcLevelOptions:', qcLevelOptions)
+      console.log('selectedQcLevel?.value:', selectedQcLevel?.value)
       console.log('================================')
 
       if (editing) {

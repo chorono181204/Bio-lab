@@ -109,6 +109,10 @@ export async function create(req: Request, res: Response) {
 
 export async function update(req: Request, res: Response) {
   try {
+    console.log('=== UPDATE LIMIT START ===')
+    console.log('Limit ID:', req.params.id)
+    console.log('Request body:', JSON.stringify(req.body, null, 2))
+    
     const { id } = req.params
     if (!id) {
       return res.status(400).json(fail('INVALID_ID', 'Limit ID is required'))
@@ -127,9 +131,20 @@ export async function update(req: Request, res: Response) {
       exp: req.body.exp ? new Date(req.body.exp) : undefined
     }
     
+    console.log('Input to updateLimit:', JSON.stringify(input, null, 2))
+    
     const limit = await updateLimit(input)
+    console.log('Updated limit successfully:', limit.id)
     return res.json(ok(limit))
   } catch (e: any) {
+    console.error('=== UPDATE LIMIT ERROR ===')
+    console.error('Error name:', e.name)
+    console.error('Error message:', e.message)
+    console.error('Error code:', e.code)
+    console.error('Error stack:', e.stack)
+    console.error('Full error:', e)
+    console.error('========================')
+    
     if (e.code === 'P2002') {
       return res.status(400).json(fail('DUPLICATE_LIMIT', 'Limit already exists for this combination'))
     }

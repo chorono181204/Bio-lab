@@ -1,7 +1,7 @@
 import React from 'react'
 import { DatePicker, Form, Input, InputNumber, Space, Select } from 'antd'
 import { BiasMethodManager } from '../bias/BiasMethodManager'
-import { lotService } from '../../services'
+import { lotService, machineService } from '../../services'
 
 export type QCLimitFormValues = {
   analyteId: string
@@ -47,31 +47,54 @@ const QCLimitForm: React.FC<Props> = ({ form, analyteOptions, lotOptions, machin
   
   React.useEffect(() => {
     const loadMachinesForLot = async () => {
+      console.log('=== QCLimitForm loadMachinesForLot ===')
+      console.log('selectedLot:', selectedLot)
+      console.log('lotOptions:', lotOptions)
+      console.log('machineOptions:', machineOptions)
+      
       if (selectedLot) {
         try {
           // Find lot ID from lot code
           const lotOption = lotOptions.find(lot => lot.value === selectedLot)
+          console.log('Found lotOption:', lotOption)
+          
           if (lotOption?.id) {
-            // Load machines for this specific lot
-            const response = await lotService.getMachines(lotOption.id)
-            const machines = response.data || []
-            const machineOptions = machines.map((machine: any) => ({
-              value: machine.id,
-              label: `${machine.deviceCode} - ${machine.name}`
-            }))
-            setFilteredMachineOptions(machineOptions)
+            // Load machines for this specific lot using machineService
+            console.log('Loading machines for lot ID:', lotOption.id)
+            const response = await machineService.list({ lotId: lotOption.id, page: 1, pageSize: 1000 })
+            console.log('Machine response:', response)
+            
+            if (response.success && response.data) {
+              const machines = 'items' in response.data ? response.data.items : response.data
+              console.log('Machines loaded:', machines)
+              
+              const machineOptions = machines.map((machine: any) => ({
+                value: machine.id,
+                label: `${machine.deviceCode} - ${machine.name}`
+              }))
+              console.log('Machine options created:', machineOptions)
+              setFilteredMachineOptions(machineOptions)
+            } else {
+              console.log('Failed to load machines, using fallback')
+              setFilteredMachineOptions(machineOptions)
+            }
           } else {
             // Fallback to all machines if lot not found
+            console.log('Lot not found, using fallback machines')
             setFilteredMachineOptions(machineOptions)
           }
+          
           // Only clear machine selection if we're not in edit mode
-          // Check if form has an ID field (indicating edit mode)
-          const isEditMode = form.getFieldValue('id')
+          // Check if form has machineId value (indicating edit mode)
+          const currentMachine = form.getFieldValue('machineId')
+          const isEditMode = !!currentMachine
+          console.log('Is edit mode:', isEditMode)
+          console.log('Current machine:', currentMachine)
+          
           if (!isEditMode) {
-            const currentMachine = form.getFieldValue('machineId')
-            if (currentMachine) {
-              form.setFieldValue('machineId', undefined)
-            }
+            console.log('Add mode - not clearing machine selection')
+          } else {
+            console.log('Edit mode - keeping machine selection')
           }
         } catch (error) {
           console.error('Error loading machines for lot:', error)
@@ -80,6 +103,7 @@ const QCLimitForm: React.FC<Props> = ({ form, analyteOptions, lotOptions, machin
         }
       } else {
         // When no lot selected, show all machines
+        console.log('No lot selected, showing all machines')
         setFilteredMachineOptions(machineOptions)
       }
     }
@@ -112,7 +136,18 @@ const QCLimitForm: React.FC<Props> = ({ form, analyteOptions, lotOptions, machin
             <Select placeholder="Chọn lô" options={lotOptions} />
           </Form.Item>
           <Form.Item name="machineId" label="Máy" style={{ width: 200 }}>
-            <Select placeholder="Chọn máy" options={filteredMachineOptions} allowClear />
+            <Select 
+              placeholder="Chọn máy" 
+              options={filteredMachineOptions} 
+              allowClear
+              onDropdownVisibleChange={(open) => {
+                console.log('=== MACHINE DROPDOWN DEBUG ===')
+                console.log('Dropdown open:', open)
+                console.log('filteredMachineOptions:', filteredMachineOptions)
+                console.log('Form machineId value:', form.getFieldValue('machineId'))
+                console.log('================================')
+              }}
+            />
           </Form.Item>
           <Form.Item name="qcLevel" label="Mức QC" rules={[{ required: true, message: 'Vui lòng chọn mức QC' }]} style={{ width: 200 }}>
             <Select placeholder="Chọn mức QC" options={qcLevelOptions} />
