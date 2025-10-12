@@ -1,0 +1,47 @@
+{
+  "name": "electron-vite-boilerplate",
+  "version": "2.0.0",
+  "main": "dist-electron/main.js",
+  "description": "Really simple Electron + Vite boilerplate.",
+  "author": "草鞋没号 <308487730@qq.com>",
+  "license": "MIT",
+  "private": true,
+  "keywords": [
+    "electron",
+    "rollup",
+    "vite"
+  ],
+  "debug": {
+    "env": {
+      "VITE_DEV_SERVER_URL": "http://127.0.0.1:9999"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && electron-builder",
+    "postinstall": "electron-builder install-app-deps",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "22.3.27",
+    "electron-builder": "^24.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "vite": "^5.0.10",
+    "vite-plugin-electron": "^0.15.4"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.5.0",
+    "antd": "^5.19.1",
+    "axios": "^1.12.2",
+    "better-sqlite3": "^8.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.9.3",
+    "xlsx": "^0.18.5"
+  }
+}

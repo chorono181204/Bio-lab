@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./data/iqc.db"
+}
+
+model Analyte {
+  id                 String      @id @default(cuid())
+  code               String      @unique
+  name               String
+  unit               String?
+  decimals           Int         @default(2)
+  qualityRequirement Float?
+  note               String?
+  departmentId       String?
+  createdBy          String?
+  updatedBy          String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  entries            Entry[]
+  limits             Limit[]
+  department         Department? @relation(fields: [departmentId], references: [id])
+  violations         Violation[]
+}
+
+model Lot {
+  id           String      @id @default(cuid())
+  code         String      @unique
+  lotName      String?
+  status       Int?        @default(1)
+  receivedDate DateTime?
+  expiryDate   DateTime?
+  note         String?
+  departmentId String?
+  createdBy    String?
+  updatedBy    String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  entries      Entry[]
+  limits       Limit[]
+  machines     Machine[]   @relation("Machine_Lot")
+  qcLevels     QcLevel[]   @relation("Lot_QcLevel")
+  violations   Violation[]
+  department   Department? @relation(fields: [departmentId], references: [id])
+}
+
+model Machine {
+  id           String      @id @default(cuid())
+  deviceCode   String      @unique
+  name         String
+  model        String?
+  serial       String?
+  status       Int?        @default(1)
+  note         String?
+  departmentId String?
+  createdBy    String?
+  updatedBy    String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  entries      Entry[]
+  limits       Limit[]
+  violations   Violation[]
+  lots         Lot[]       @relation("Machine_Lot")
+  department   Department? @relation(fields: [departmentId], references: [id])
+}
+
+model QcLevel {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  departmentId String?
+  createdBy    String?
+  updatedBy    String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  entries      Entry[]
+  limits       Limit[]
+  department   Department?   @relation(fields: [departmentId], references: [id])
+  lots         Lot[]         @relation("Lot_QcLevel")
+  westgardRules WestgardRule[] @relation("WestgardRule_QcLevel")
+  violations   Violation[]
+}
+
+model Entry {
+  id           String      @id @default(cuid())
+  analyteId    String
+  lotId        String
+  qcLevelId    String
+  machineId    String
+  entryDate    DateTime
+  value        Float
+  note         String?
+  createdBy    String?
+  updatedBy    String?
+  departmentId String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  analyte      Analyte     @relation(fields: [analyteId], references: [id])
+  lot          Lot         @relation(fields: [lotId], references: [id])
+  qcLevel      QcLevel     @relation(fields: [qcLevelId], references: [id])
+  machine      Machine     @relation(fields: [machineId], references: [id])
+  department   Department? @relation(fields: [departmentId], references: [id])
+}
+
+model Limit {
+  id           String      @id @default(cuid())
+  analyteId    String
+  lotId        String
+  qcLevelId    String
+  machineId    String
+  unit         String?
+  decimals     Int         @default(2)
+  mean         Float       @default(0)
+  sd           Float       @default(0)
+  cv           Float?
+  tea          Float?
+  cvRef        Float?
+  peerGroup    Float?
+  biasEqa      Float?
+  biasMethod   String?
+  qcName       String?
+  exp          DateTime?
+  method       String?
+  note         String?
+  createdBy    String?
+  updatedBy    String?
+  departmentId String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  analyte      Analyte     @relation(fields: [analyteId], references: [id])
+  lot          Lot         @relation(fields: [lotId], references: [id])
+  qcLevel      QcLevel     @relation(fields: [qcLevelId], references: [id])
+  machine      Machine     @relation(fields: [machineId], references: [id])
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  @@unique([analyteId, lotId, qcLevelId, machineId])
+}
+
+model User {
+  id           String      @id @default(cuid())
+  username     String      @unique
+  fullName     String?
+  password     String?
+  position     String?
+  dob          DateTime?
+  note         String?
+  role         String?
+  departmentId String?
+  createdBy    String?
+  updatedBy    String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  department   Department? @relation(fields: [departmentId], references: [id])
+}
+
+model BiasMethod {
+  id           String      @id @default(cuid())
+  name         String      @unique
+  note         String?
+  departmentId String?
+  createdBy    String?
+  updatedBy    String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  department   Department? @relation(fields: [departmentId], references: [id])
+}
+
+model WestgardRule {
+  id                String        @id @default(cuid())
+  code              String        @unique // e.g. wg_1_2s, wg_1_3s, wg_2_2s
+  name              String
+  severity          String // warning | error | critical
+  description       String?
+  type              String?
+  windowSize        Int?
+  thresholdSd       Float?
+  consecutivePoints Int?
+  sameSide          Boolean?
+  oppositeSides     Boolean?
+  sumAbsZGt         Float?
+  expression        String?
+  customMessage     String?
+  orderIndex        Int?
+  params            String?
+  isActive          Boolean       @default(true)
+  departmentId      String?
+  createdBy         String?
+  updatedBy         String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  qcLevels          QcLevel[]     @relation("WestgardRule_QcLevel")
+  violations        Violation[]
+  department        Department?   @relation(fields: [departmentId], references: [id])
+}
+
+
+model Violation {
+  id           String   @id @default(cuid())
+  analyteId    String
+  lotId        String
+  qcLevelId    String
+  machineId    String
+  entryDate    DateTime
+  ruleId       String
+  content      String
+  action       String?
+  staff        String?
+  status       String? // approved | rejected | pending
+  createdBy    String?
+  updatedBy    String?
+  departmentId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  analyte    Analyte      @relation(fields: [analyteId], references: [id])
+  lot        Lot          @relation(fields: [lotId], references: [id])
+  qcLevel    QcLevel      @relation(fields: [qcLevelId], references: [id])
+  machine    Machine      @relation(fields: [machineId], references: [id])
+  rule       WestgardRule @relation(fields: [ruleId], references: [id])
+  department Department?  @relation(fields: [departmentId], references: [id])
+}
+
+model Department {
+  id           String         @id @default(cuid())
+  code         String         @unique
+  name         String
+  lockedEntryMonths String?  
+  createdBy    String?
+  updatedBy    String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  users        User[]
+  machines     Machine[]
+  lots         Lot[]
+  analytes     Analyte[]
+  qcLevels     QcLevel[]
+  entries      Entry[]
+  limits       Limit[]
+  violations   Violation[]
+  biasMethods  BiasMethod[]
+  rules        WestgardRule[]
+  forms        Form[]
+}
+
+model Form {
+  id          String      @id @default(cuid())
+  name        String
+  code        String      @unique
+  issueRound  String?
+  issueDate   DateTime?
+  note        String?
+  departmentId String?
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  department  Department? @relation(fields: [departmentId], references: [id])
+}
