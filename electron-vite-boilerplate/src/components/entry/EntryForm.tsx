@@ -131,7 +131,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({
           
           limits.forEach((limit: any) => {
             if (limit.qcLevelId && limit.qcLevel) {
-              qcLevelMap.set(limit.qcLevelId, limit.qcLevel)
+              qcLevelMap.set(limit.qcLevelId, typeof limit.qcLevel === 'string' ? limit.qcLevel : limit.qcLevel.name)
             }
           })
 
@@ -205,7 +205,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({
             if (limit.analyteId && limit.analyteName) {
               analyteMap.set(limit.analyteId, {
                 name: limit.analyteName,
-                code: limit.analyte?.code || ''
+                code: typeof limit.analyte?.code === 'string' ? limit.analyte.code : ''
               })
             }
           })

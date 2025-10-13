@@ -78,7 +78,13 @@ export async function update(req: Request, res: Response) {
       updatedBy: userFullName
     }
     
+    console.log('=== DEPARTMENT UPDATE BACKEND ===')
+    console.log('Request body:', req.body)
+    console.log('Input:', input)
+    console.log('User:', userFullName)
+    
     const department = await updateDepartment(input)
+    console.log('Updated department:', department)
     return res.json(ok(department))
   } catch (e: any) {
     if (e.code === 'P2025') {

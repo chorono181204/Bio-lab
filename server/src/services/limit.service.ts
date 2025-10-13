@@ -16,6 +16,9 @@ export async function getLimitById(id: string) {
       },
       machine: {
         select: { id: true, deviceCode: true, name: true }
+      },
+      biasMethod: {
+        select: { id: true, name: true }
       }
     }
   })
@@ -29,10 +32,12 @@ export async function listLimits(params: {
   lotId?: string
   machineId?: string
   qcLevel?: string
+  departmentId?: string | null
   options?: boolean
 }) {
   const where: any = {}
   
+  if (params.departmentId) where.departmentId = params.departmentId
   if (params.analyteId) where.analyteId = params.analyteId
   if (params.lotId) where.lotId = params.lotId
   if (params.machineId) where.machineId = params.machineId
@@ -81,6 +86,9 @@ export async function listLimits(params: {
         },
         machine: {
           select: { id: true, deviceCode: true, name: true }
+        },
+        biasMethod: {
+          select: { id: true, name: true }
         }
       }
     }),
@@ -105,6 +113,9 @@ export async function createLimit(input: CreateLimitInput) {
       },
       machine: {
         select: { id: true, deviceCode: true, name: true }
+      },
+      biasMethod: {
+        select: { id: true, name: true }
       }
     }
   })
@@ -127,6 +138,9 @@ export async function updateLimit(input: UpdateLimitInput) {
       },
       machine: {
         select: { id: true, deviceCode: true, name: true }
+      },
+      biasMethod: {
+        select: { id: true, name: true }
       }
     }
   })

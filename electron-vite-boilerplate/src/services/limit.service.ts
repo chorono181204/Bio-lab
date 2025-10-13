@@ -28,6 +28,26 @@ export interface QCLimit {
   updatedBy?: string
   createdAt?: string | Date
   updatedAt?: string | Date
+  // Object fields from backend
+  analyte?: {
+    id: string
+    code: string
+    name: string
+  }
+  lot?: {
+    id: string
+    code: string
+    lotName?: string
+  }
+  qcLevel?: {
+    id: string
+    name: string
+  }
+  machine?: {
+    id: string
+    deviceCode: string
+    name: string
+  }
 }
 
 export interface CreateQCLimitInput {
@@ -70,11 +90,9 @@ export interface QCLimitListParams {
 const mapLimitData = (limit: any): QCLimit => ({
   id: limit.id,
   analyteId: limit.analyteId,
-  qcLevelId: limit.qcLevelId, // Thêm qcLevelId
+  qcLevelId: limit.qcLevelId,
   analyteName: limit.analyte?.name || '',
-  qcLevel: limit.qcLevel?.name || '',
   qcName: limit.qcLevel?.name,
-  lot: limit.lot?.code || '',
   applyToMachine: !!limit.machineId,
   machineId: limit.machineId,
   machineName: limit.machine?.name,
@@ -82,6 +100,7 @@ const mapLimitData = (limit: any): QCLimit => ({
   decimals: limit.decimals || 2,
   mean: limit.mean || 0,
   sd: limit.sd || 0,
+  cv: limit.cv,
   tea: limit.tea,
   cvRef: limit.cvRef,
   peerGroup: limit.peerGroup,
@@ -93,7 +112,12 @@ const mapLimitData = (limit: any): QCLimit => ({
   createdBy: limit.createdBy,
   updatedBy: limit.updatedBy,
   createdAt: limit.createdAt,
-  updatedAt: limit.updatedAt
+  updatedAt: limit.updatedAt,
+  // Keep original objects for frontend use
+  analyte: limit.analyte,
+  lot: limit.lot,
+  qcLevel: limit.qcLevel,
+  machine: limit.machine
 })
 
 export const limitService = {

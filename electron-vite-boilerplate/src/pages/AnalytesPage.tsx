@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Form, Input, InputNumber, Modal, Popconfirm, Space, Table, Skeleton, message } from 'antd'
 import { EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons'
-import { exportAnalytesToXlsx, importAnalytesFromXlsx } from '../utils/analytesImportExport'
+import { exportAnalytesToExcel } from '../utils/export'
+import { fetchAllPaginated } from '../utils/fetchAll'
+import { importAnalytesFromXlsx } from '../utils/analytesImportExport'
 import { useApi, usePagination } from '../hooks'
 import { analyteService, Analyte } from '../services'
 import DepartmentSelect from '../components/DepartmentSelect'
@@ -157,9 +159,7 @@ const AnalytesPage: React.FC = () => {
     {
       title: 'Hành động', width: 160,
       render: (_: any, record: Analyte) => {
-        const isOwner = record.createdBy === currentUser
-        const isAdmin = currentRole === 'admin'
-        const canModify = isAdmin || isOwner
+        const canModify = true
         return (
           <Space>
             <Button size="small" type="primary" ghost icon={<EditOutlined />} onClick={() => onEdit(record)} disabled={!canModify}>Sửa</Button>
@@ -236,7 +236,10 @@ const AnalytesPage: React.FC = () => {
 
   const handleExport = async () => {
     try {
-      await exportAnalytesToXlsx()
+      message.loading('Đang xuất file...', 0)
+      const all = await fetchAllPaginated(analyteService.list as any, { search: debouncedSearchText || undefined } as any, 1000)
+      exportAnalytesToExcel(all)
+      message.destroy()
       message.success('Xuất file thành công')
     } catch (error) {
       console.error('Export error:', error)

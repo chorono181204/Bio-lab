@@ -10,7 +10,8 @@ import {
   DeploymentUnitOutlined,
   HomeOutlined,
   UserOutlined,
-  ControlOutlined
+  ControlOutlined,
+  ApiOutlined
 } from '@ant-design/icons'
 import viVN from 'antd/locale/vi_VN'
 import { AuthProvider, useAuth } from './hooks/useAuth'
@@ -31,6 +32,7 @@ import LJPage from './pages/LJPage'
 import WestgardPage from './pages/WestgardPage'
 import QcSetupPage from './pages/QcSetupPage'
 import DepartmentPage from './pages/DepartmentPage'
+import ConnectionPage from './pages/ConnectionPage'
 
 const root = document.querySelector<HTMLDivElement>('#app')!
 root.innerHTML = `
@@ -50,8 +52,8 @@ function render() {
         { key: 'analytes',  label: 'Danh sách xét nghiệm' },
         { key: 'lots', label: 'Quản lý lô' },
         { key: 'devices', label: 'Quản lý máy' },
-        { key: 'users', label: 'Quản lý người dùng' },
-        { key: 'departments', label: 'Quản lý khoa' },
+        { key: 'users', label: 'Quản lý người dùng', role: 'manager' },
+        { key: 'departments', label: 'Quản lý khoa', role: 'manager' },
       ]
     },
     {
@@ -67,6 +69,7 @@ function render() {
     { key: 'lj', icon: <LineChartOutlined />, label: 'Levey-Jennings' },
     { key: 'westgard', icon: <BarChartOutlined />, label: 'Westgard' },
     { key: 'sigma', icon: <DeploymentUnitOutlined />, label: 'Six Sigma' },
+    { key: 'connection', icon: <ApiOutlined />, label: 'Kết nối' },
     { key: 'profile', icon: <UserOutlined />, label: 'Hồ sơ cá nhân' },
   ]
 
@@ -89,7 +92,15 @@ function render() {
         <AntApp>
           {isAuthenticated ? (
             <AppLayout
-              menuItems={menuItems}
+              menuItems={menuItems.filter(mi => {
+                if (!('children' in mi)) return true
+                const mapped = { ...mi, children: (mi as any).children.filter((c: any)=> {
+                  if (!c.role) return true
+                  const role = user?.role?.toLowerCase() || ''
+                  return role === 'admin' || role === 'manager'
+                }) }
+                return mapped
+              }) as any}
               onMenuClick={(k)=> { setActiveKey(k); window.location.hash = k }}
               selectedKey={activeKey}
               user={user}
@@ -110,6 +121,7 @@ function render() {
                 {activeKey === 'lj' && <LJPage />}
                 {activeKey === 'westgard' && <WestgardPage />}
                 {activeKey === 'sigma' && <SigmaPage />}
+                {activeKey === 'connection' && <ConnectionPage />}
               </ProtectedRoute>
             </AppLayout>
           ) : (

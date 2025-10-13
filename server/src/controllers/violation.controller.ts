@@ -23,6 +23,8 @@ export async function list(req: Request, res: Response) {
       machineId: req.query.machineId as string,
       ruleId: req.query.ruleId as string,
       status: req.query.status as string,
+      dateFrom: req.query.dateFrom as string,
+      dateTo: req.query.dateTo as string,
       departmentId: where.departmentId
     })
     

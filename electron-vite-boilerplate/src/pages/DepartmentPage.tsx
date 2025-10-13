@@ -1,8 +1,31 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Skeleton, message } from 'antd'
 import { EditOutlined, DeleteOutlined, SearchOutlined, PlusOutlined } from '@ant-design/icons'
+import { exportDepartmentsToExcel } from '../utils/export'
+import { fetchAllPaginated } from '../utils/fetchAll'
 import { useApi, usePagination } from '../hooks'
 import { departmentService, Department } from '../services'
+
+// Generate month options for the last 24 months
+const generateMonthOptions = () => {
+  const options = []
+  const currentDate = new Date()
+  
+  for (let i = 0; i < 24; i++) {
+    const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const value = `${year}-${month}`
+    const label = `${month}/${year}`
+    
+    options.push({
+      value,
+      label
+    })
+  }
+  
+  return options
+}
 
 const DepartmentPage: React.FC = () => {
   const [open, setOpen] = useState(false)
@@ -69,8 +92,8 @@ const DepartmentPage: React.FC = () => {
       dataIndex: 'lockedEntryMonths', 
       width: 200,
       render: (months: string) => (
-        <Tag color={months ? 'orange' : 'green'}>
-          {months ? `Đã khóa: ${months}` : 'Chưa khóa'}
+        <Tag color={months && months.trim() ? 'orange' : 'green'}>
+          {months && months.trim() ? `Đã khóa: ${months}` : 'Chưa khóa'}
         </Tag>
       ),
       sorter: (a: Department, b: Department) => (a.lockedEntryMonths || '').localeCompare(b.lockedEntryMonths || ''),
@@ -91,9 +114,7 @@ const DepartmentPage: React.FC = () => {
       title: 'Hành động', 
       width: 160,
       render: (_: any, record: Department) => {
-        const isOwner = record.createdBy === currentUser
-        const isAdmin = currentRole === 'admin'
-        const canModify = isAdmin || isOwner
+        const canModify = true
         return (
           <Space>
             <Button 
@@ -134,7 +155,7 @@ const DepartmentPage: React.FC = () => {
     setEditing(rec)
     form.setFieldsValue({ 
       ...rec,
-      lockedEntryMonths: rec.lockedEntryMonths || ''
+      lockedEntryMonths: rec.lockedEntryMonths ? rec.lockedEntryMonths.split(',') : []
     })
     setOpen(true)
   }
@@ -160,8 +181,15 @@ const DepartmentPage: React.FC = () => {
         code: values.code,
         name: values.name,
         description: values.description,
-        lockedEntryMonths: values.lockedEntryMonths || undefined,
+        lockedEntryMonths: values.lockedEntryMonths && values.lockedEntryMonths.length > 0 
+          ? values.lockedEntryMonths.join(',') 
+          : '',
       }
+      
+      console.log('=== DEPARTMENT UPDATE DEBUG ===')
+      console.log('Original values:', values)
+      console.log('Payload:', payload)
+      console.log('Editing ID:', editing?.id)
       
       if (editing) {
         await departmentService.update(editing.id, { ...payload, id: editing.id })
@@ -185,7 +213,21 @@ const DepartmentPage: React.FC = () => {
   return (
     <div>
       <Space style={{ marginBottom: 12, width: '100%', justifyContent: 'space-between' }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={onCreate}>Thêm khoa</Button>
+        <Space>
+          <Button type="primary" icon={<PlusOutlined />} onClick={onCreate}>Thêm khoa</Button>
+          <Button onClick={async () => {
+            try {
+              message.loading('Đang xuất file...', 0)
+              const all = await fetchAllPaginated(departmentService.list as any, { search: debouncedSearchText || undefined } as any, 1000)
+              exportDepartmentsToExcel(all)
+              message.destroy()
+              message.success('Xuất file thành công')
+            } catch (error) {
+              console.error('Export error:', error)
+              message.error('Lỗi khi xuất file')
+            }
+          }}>Xuất ra file</Button>
+        </Space>
         <Input
           placeholder="Tìm kiếm khoa..."
           prefix={<SearchOutlined />}
@@ -237,7 +279,13 @@ const DepartmentPage: React.FC = () => {
             <Input.TextArea rows={3} placeholder="Mô tả về khoa" />
           </Form.Item>
           <Form.Item name="lockedEntryMonths" label="Khóa tháng nhập liệu">
-            <Input placeholder="VD: 2024-01,2024-02 (cách nhau bởi dấu phẩy)" />
+            <Select
+              mode="multiple"
+              placeholder="Chọn tháng cần khóa"
+              style={{ width: '100%' }}
+              options={generateMonthOptions()}
+              allowClear
+            />
           </Form.Item>
         </Form>
       </Modal>

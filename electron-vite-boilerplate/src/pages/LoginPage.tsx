@@ -33,12 +33,18 @@ const LoginPage: React.FC<{ onSuccess: (username: string, password: string) => P
             <div style={{ color: '#ffc107', fontSize: 12, fontWeight: 400, fontStyle: 'italic', marginTop: 4 }}>More than a hospital</div>
           </div>
         </div>
-        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ username: 'admin', password: 'admin' }}>
+        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ username: 'admin', password: 'admin', serverUrl: (typeof localStorage !== 'undefined' && localStorage.getItem('serverUrl')) || 'http://localhost' }}>
           <Form.Item name="username" label="Tài khoản" rules={[{ required: true }]}> 
             <Input placeholder="admin" autoFocus />
           </Form.Item>
           <Form.Item name="password" label="Mật khẩu" rules={[{ required: true }]}>
             <Input.Password placeholder="admin" />
+          </Form.Item>
+          <Form.Item name="serverUrl" label="URL máy chủ (QC Server)" tooltip="Ví dụ: http://192.168.102.100" rules={[{ required: true, message: 'Nhập URL máy chủ' }]}>
+            <Input placeholder="http://localhost" onChange={(e)=>{
+              const raw = e.target.value
+              if (raw) localStorage.setItem('serverUrl', raw.trim().replace(/\/?$/, ''))
+            }} />
           </Form.Item>
           <Button type="primary" htmlType="submit" block loading={loading}>Đăng nhập</Button>
         </Form>
@@ -56,7 +62,7 @@ const LoginPage: React.FC<{ onSuccess: (username: string, password: string) => P
         zIndex: 1000,
         fontWeight: 'bold'
       }}>
-        <div>Bs CKI. Vũ Thị Thuý Phương - 0349.648.326, Bs CKII Trịnh Thị Thu Hoài - BVĐK số 1 tỉnh Lào Cai</div>
+        <div>Bs Vũ Thị Thuý Phương, Bs Trịnh Thị Thu Hoài - BVĐK số 1 tỉnh Lào Cai</div>
       </div>
     </div>
   )

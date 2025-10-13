@@ -46,7 +46,8 @@ function createWindow() {
           "style-src 'self' 'unsafe-inline'; " +
           "img-src 'self' data: blob:; " +
           "font-src 'self' data:; " +
-          "connect-src 'self' http://localhost:* ws://localhost:*;"
+          // Allow connecting to LAN/back-end hosts during development
+          "connect-src * ws:;"
         ]
       }
     })

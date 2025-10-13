@@ -11,6 +11,8 @@ export interface User {
   fullName?: string
   role?: string
   departmentId?: string
+  departmentName?: string
+  dob?: string
   createdAt: string
   updatedAt: string
 }

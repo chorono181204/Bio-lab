@@ -210,9 +210,7 @@ const LotsPage: React.FC = () => {
     {
       title: 'Hành động', width: 160,
       render: (_: any, record: Lot) => {
-        const isOwner = record.createdBy === currentUser
-        const isAdmin = currentRole === 'admin'
-        const canModify = isAdmin || isOwner
+        const canModify = true
         return (
           <Space>
             <Button size="small" type="primary" ghost icon={<EditOutlined />} onClick={() => onEdit(record)} disabled={!canModify}>Sửa</Button>

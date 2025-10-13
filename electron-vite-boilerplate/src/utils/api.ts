@@ -2,12 +2,19 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import { config } from '../config/env'
 import { message } from 'antd'
 
-// API Configuration
-const API_BASE_URL = config.apiBaseUrl
+// API Configuration: allow dynamic base URL from localStorage (serverUrl), default to config.apiBaseUrl
+const getBaseUrl = () => {
+  const raw = localStorage.getItem('serverUrl')
+  if (raw && raw.trim()) {
+    const url = raw.replace(/\/?$/, '') // remove trailing slash
+    return `${url}:4000/api`
+  }
+  return config.apiBaseUrl
+}
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getBaseUrl(),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -17,6 +24,8 @@ const api: AxiosInstance = axios.create({
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
+    // Refresh baseURL each request in case user updated serverUrl in Connection page
+    config.baseURL = getBaseUrl()
     const token = localStorage.getItem('token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`

@@ -1,5 +1,14 @@
 import { importFromXlsx, exportToXlsx, type SheetSpec } from './xlsx'
-// import { type WgRuleParams } from './westgard'
+import { limitService } from '../services/limit.service'
+import { lotService } from '../services/lot.service'
+import { machineService } from '../services/machine.service'
+import { violationService } from '../services/violation.service'
+import dayjs from 'dayjs'
+import { westgardService } from '../services/westgard.service'
+import { entryService } from '../services/entry.service'
+import { analyteService } from '../services/analyte.service'
+import { qcLevelService } from '../services/qcLevel.service'
+import { evaluateWithRules } from './westgard-dynamic'
 
 type ImportResult = {
   created: number
@@ -17,20 +26,34 @@ export async function importEntriesFromXlsx(
   opts: {
     lotId: string
     machineId: string
+    qcLevelId: string
     qcLevelIdsBySheet?: Record<string, string> // default: QC1/QC2/QC3
     month: string // YYYY-MM
   }
 ): Promise<ImportResult> {
-  const { lotId, machineId, qcLevelIdsBySheet, month } = opts
+  const { lotId, machineId, qcLevelId, qcLevelIdsBySheet, month } = opts
+  console.log('[IMPORT] start', { file: file?.name, lotId, machineId, qcLevelId, month, qcLevelIdsBySheet })
   if (!lotId || !machineId || !month) throw new Error('Missing lot/machine/month')
   const currentUser = (typeof localStorage !== 'undefined' && localStorage.getItem('username')) || 'admin'
 
   const wb = await importFromXlsx(file)
-  // Westgard rules are not required for row-per-entry import path
-  // Rules not needed during import in row-per-entry mode; keep fetch for future use
+  // Load active Westgard rules once for FE evaluation
+  let westgardRules: any[] = []
+  try {
+    const wgRes = await westgardService.list()
+    westgardRules = ('data' in wgRes ? (wgRes as any).data.items : wgRes.data) || []
+    console.log('[IMPORT] westgard rules loaded:', westgardRules?.length || 0)
+  } catch (e) {
+    console.warn('Failed to load Westgard rules for import, proceed without:', e)
+  }
 
-  // Load analytes mapping name -> id and code
-  const analytes = await (window as any).iqc?.analytes?.list?.()
+  // Load analytes mapping name -> id and code (API)
+  let analytes: any[] = []
+  try {
+    const aRes = await analyteService.list({ page: 1, pageSize: 1000 })
+    analytes = 'items' in aRes.data ? aRes.data.items : aRes.data
+  } catch (e) { console.warn('Load analytes failed for import:', e) }
+  console.log('[IMPORT] analytes loaded:', analytes?.length || 0)
   const normalize = (s: string) => s
     .normalize('NFD').replace(/\p{Diacritic}+/gu, '') // strip accents
     .replace(/[^\w]+/g, '') // remove non-word
@@ -44,8 +67,13 @@ export async function importEntriesFromXlsx(
     if (key && a?.code) nameToCode[key] = a.code
   })
 
-  // Load QC levels mapping name -> id
-  const qcLevels = await (window as any).iqc?.qcLevels?.list?.()
+  // Load QC levels mapping name -> id (API)
+  let qcLevels: any[] = []
+  try {
+    const qRes = await qcLevelService.list({ page: 1, pageSize: 1000 })
+    qcLevels = 'items' in qRes.data ? qRes.data.items : qRes.data
+  } catch (e) { console.warn('Load QC levels failed for import:', e) }
+  console.log('[IMPORT] qc levels loaded:', qcLevels?.length || 0)
   const qcLevelNameToId: Record<string, string> = {}
   ;(qcLevels || []).forEach((qc: any) => {
     const name = (qc?.name || '') as string
@@ -53,6 +81,32 @@ export async function importEntriesFromXlsx(
       qcLevelNameToId[name.toUpperCase()] = qc.id
     }
   })
+  // Load lots and machines to support file using names instead of IDs
+  const lotCodeToId: Record<string, string> = {}
+  try {
+    const lotsRes = await lotService.list({ page: 1, pageSize: 1000 })
+    const lots = 'items' in lotsRes.data ? lotsRes.data.items : lotsRes.data
+    ;(lots || []).forEach((l: any) => {
+      if (l.code && l.id) lotCodeToId[String(l.code).toUpperCase()] = l.id
+      if (l.lotName && l.id) lotCodeToId[String(l.lotName).toUpperCase()] = l.id
+      if (l.name && l.id) lotCodeToId[String(l.name).toUpperCase()] = l.id
+    })
+    console.log('[IMPORT] lots loaded:', Object.keys(lotCodeToId).length)
+  } catch {}
+
+  const machineNameToId: Record<string, string> = {}
+  try {
+    const machinesRes = await machineService.list({ page: 1, pageSize: 1000 })
+    const machines = 'items' in machinesRes.data ? machinesRes.data.items : machinesRes.data
+    ;(machines || []).forEach((m: any) => {
+      const key1 = String(m.name || '').toUpperCase()
+      const key2 = String(m.deviceCode || '').toUpperCase()
+      if (key1 && m.id) machineNameToId[key1] = m.id
+      if (key2 && m.id) machineNameToId[key2] = m.id
+    })
+    console.log('[IMPORT] machines loaded:', Object.keys(machineNameToId).length)
+  } catch {}
+
   
   // Debug: Log QC level mapping
   console.log('🔍 QC Level mapping:', qcLevelNameToId)
@@ -62,15 +116,11 @@ export async function importEntriesFromXlsx(
   // Iterate sheets (QC levels)
   for (const rawName of Object.keys(wb)) {
     const sheetName = String(rawName || '').trim()
-    // Lookup QC level ID from database mapping
-    const qcId = (qcLevelIdsBySheet && qcLevelIdsBySheet[sheetName]) || qcLevelNameToId[sheetName.toUpperCase()]
+    // Always use QC from header (ignore sheet/file values)
+    const qcId = qcLevelId
     
-    if (!qcId) {
-      result.errors.push(`Sheet ${sheetName}: QC level not found in database`)
-      continue
-    }
-    
-    const rows = wb[rawName] || []
+    const rows = (wb[rawName] || []).filter((r: any) => Object.keys(r || {}).length > 0)
+    console.log('[IMPORT] sheet detected:', sheetName, 'rows:', rows.length)
 
     // New format: each entry is a row with columns 'Bộ XN' | 'Ngày nhập' | 'Giá trị'
     const isRowPerEntry = rows.some((r: any) => 'Bộ XN' in r || 'Ngày nhập' in r || 'Giá trị' in r)
@@ -92,19 +142,53 @@ export async function importEntriesFromXlsx(
         const year = m[3]
         const entryDate = `${year}-${monthNum}-${day}`
 
+        // Resolve QC level / lot / machine by names if provided per row
+        // Always take context from header
+        const qcIdResolved = qcId
+        const lotResolved = lotId
+        const machineResolved = machineId
+
         try {
-          await (window as any).iqc?.entries?.batchCreate?.([
-            {
-              analyte_id: analyteId,
-              lot_id: lotId,
-              qc_level_id: qcId,
-              machine_id: machineId,
-              entry_date: entryDate,
-              value,
-              created_by: currentUser
-            }
-          ])
+          const createdEntry = await entryService.create({
+            analyteId,
+            lotId: lotResolved,
+            qcLevelId: qcIdResolved,
+            machineId: machineResolved,
+            value,
+            date: entryDate,
+            note: undefined
+          })
           result.created += 1
+          console.log('[IMPORT] created entry:', createdEntry?.id || '(ok)', { analyteId, lotResolved, qcIdResolved, machineResolved, entryDate, value })
+
+          // FE evaluate rule and create violation
+          try {
+            // Load limit (mean, sd) for this context lazily
+            const limitsRes = await limitService.list({ lotId: lotResolved, machineId: machineResolved, qcLevel: qcIdResolved, page: 1, pageSize: 1000 })
+            const limits = 'items' in limitsRes.data ? limitsRes.data.items : limitsRes.data
+            const lim = (limits || []).find((l: any) => l.analyteId === analyteId)
+            if (lim && isFinite(lim.sd) && lim.sd !== 0) {
+              const res = evaluateWithRules([Number(value)], { mean: Number(lim.mean), sd: Number(lim.sd) }, westgardRules)
+              const violated = res.violated || []
+              for (const code of violated) {
+                const content = `Ngày ${dayjs(entryDate).format('DD/MM')}, xét nghiệm ${lim.analyte?.name || ''}: ${lim.qcLevel?.name || ''} vi phạm nguyên tắc ${code}`
+                await violationService.create({
+                  analyteId,
+                  lotId: lotResolved,
+                  qcLevelId: qcIdResolved,
+                  machineId: machineResolved,
+                  entryDate,
+                  value: Number(value),
+                  ruleCode: code,
+                  severity: (code === '1-3s' ? 'error' : code === '1-2s' ? 'warning' : 'critical') as any,
+                  content,
+                  status: 'pending'
+                })
+              }
+            }
+          } catch (err) {
+            console.warn(`Create violations failed for row ${i + 1}:`, err)
+          }
         } catch (e) {
           result.errors.push(`Sheet ${sheetName} row ${i+1}: ${e instanceof Error ? e.message : 'Create failed'}`)
         }
@@ -115,7 +199,7 @@ export async function importEntriesFromXlsx(
     // Backward-compatible format: each analyte in one row with dynamic date columns
     for (let i = 0; i < rows.length; i++) {
       const r: any = rows[i]
-      const testName = String(r['TEST'] || '').trim()
+      const testName = String((r['Bộ XN'] ?? r['TEST'] ?? '') || '').trim()
       if (!testName) { result.skipped++; continue }
       const analyteId = nameToId[normalize(testName)]
       if (!analyteId) { result.skipped++; result.errors.push(`Sheet ${sheetName} row ${i+1}: Not found TEST ${testName}`); continue }
@@ -143,8 +227,48 @@ export async function importEntriesFromXlsx(
       }
       if (creates.length) {
         try {
-          await (window as any).iqc?.entries?.batchCreate?.(creates)
+          for (const c of creates) {
+            const createdEntry = await entryService.create({
+              analyteId: c.analyte_id,
+              lotId,
+              qcLevelId: qcId,
+              machineId,
+              value: c.value,
+              date: c.entry_date,
+              note: undefined
+            })
+            console.log('[IMPORT] created entry:', createdEntry?.id || '(ok)', { analyteId: c.analyte_id, lotId, qcId, machineId, date: c.entry_date, value: c.value })
+          }
           result.created += creates.length
+
+          // Evaluate for each created entry
+          try {
+            const limitsRes = await limitService.list({ lotId, machineId, qcLevel: qcId, page: 1, pageSize: 1000 })
+            const limits = 'items' in limitsRes.data ? limitsRes.data.items : limitsRes.data
+            for (const c of creates) {
+              const lim = (limits || []).find((l: any) => l.analyteId === c.analyte_id)
+              if (!lim || !isFinite(lim.sd) || lim.sd === 0) continue
+              const res = evaluateWithRules([Number(c.value)], { mean: Number(lim.mean), sd: Number(lim.sd) }, westgardRules)
+              const violated = res.violated || []
+              for (const code of violated) {
+                const content = `Ngày ${dayjs(c.entry_date).format('DD/MM')}, xét nghiệm ${lim.analyte?.name || ''}: ${lim.qcLevel?.name || ''} vi phạm nguyên tắc ${code}`
+                await violationService.create({
+                  analyteId: c.analyte_id,
+                  lotId,
+                  qcLevelId: qcId,
+                  machineId,
+                  entryDate: c.entry_date,
+                  value: Number(c.value),
+                  ruleCode: code,
+                  severity: (code === '1-3s' ? 'error' : code === '1-2s' ? 'warning' : 'critical') as any,
+                  content,
+                  status: 'pending'
+                })
+              }
+            }
+          } catch (err) {
+            console.warn('Create violations for batch failed:', err)
+          }
         } catch (e) {
           result.errors.push(`Sheet ${sheetName} row ${i+1}: ${e instanceof Error ? e.message : 'Create failed'}`)
         }

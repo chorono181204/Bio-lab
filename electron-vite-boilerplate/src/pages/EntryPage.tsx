@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState }  from 'react'
 import { Button, DatePicker, Form, Input, InputNumber, Modal, Select, Space, message, Table } from 'antd'
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons'
+import { exportEntriesToExcel } from '../utils/export'
 import { importEntriesFromXlsx } from '../utils/entriesImportExport'
-import { exportToXlsx } from '../utils/xlsx'
 import dayjs from 'dayjs'
 import { evaluateWithRules } from '../utils/westgard-dynamic'
+import { violationService } from '../services/violation.service'
 import { usePagination } from '../hooks'
 import { entryService, Entry } from '../services/entry.service'
 import { analyteService } from '../services/analyte.service'
@@ -12,10 +13,14 @@ import { lotService } from '../services/lot.service'
 import { limitService } from '../services/limit.service'
 import { westgardService } from '../services/westgard.service'
 import { EntryForm, EntryFormValues } from '../components/entry/EntryForm'
+import { apiClient } from '../utils/api'
+import { fetchAllPaginated } from '../utils/fetchAll'
 
 const EntryPage: React.FC = () => {
-  // Pagination hook
-  const pagination = usePagination({ initialPage: 1, initialPageSize: 20 })
+  // Server-side pagination (align with WestgardPage)
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [pageSize, setPageSize] = useState<number>(20)
+  const [total, setTotal] = useState<number>(0)
   
   // State for manual data loading
   const [entries, setEntries] = useState<Entry[]>([])
@@ -46,6 +51,49 @@ const EntryPage: React.FC = () => {
   const [limitMap, setLimitMap] = useState<Record<string, { mean: number; sd: number }>>({})
   const [entryStatus, setEntryStatus] = useState<Record<string, { level: 'pass'|'warning'|'error'|'critical'; violated: string[] }>>({})
   const [westgardRules, setWestgardRules] = useState<Array<{ code: string; severity: 'warning'|'error'|'critical'; params: any }>>([])
+  const [lockedMonths, setLockedMonths] = useState<string[]>([])
+
+  // Check if current month is locked
+  const isCurrentMonthLocked = useMemo(() => {
+    if (!range || !range[0]) return false
+    const currentMonth = range[0].format('YYYY-MM')
+    const isLocked = lockedMonths.includes(currentMonth)
+    console.log('=== MONTH LOCK CHECK ===')
+    console.log('Current month:', currentMonth)
+    console.log('Locked months:', lockedMonths)
+    console.log('Is locked:', isLocked)
+    return isLocked
+  }, [range, lockedMonths])
+
+  // Load department locked months
+  useEffect(() => {
+    const loadLockedMonths = async () => {
+      try {
+        const departmentId = localStorage.getItem('departmentId')
+        if (departmentId) {
+          const url = `/departments/${departmentId}`
+          console.log('LOCKED MONTHS → calling (apiClient):', url)
+          const response = await apiClient.get(url)
+          console.log('LOCKED MONTHS → success:', (response as any)?.success)
+          console.log('LOCKED MONTHS → raw response:', response.data)
+          const raw = (response as any)?.data?.data?.lockedEntryMonths ?? (response as any)?.data?.lockedEntryMonths ?? ''
+          const months = typeof raw === 'string' && raw.trim().length > 0
+            ? raw.split(',').filter(Boolean)
+            : []
+          setLockedMonths(months)
+          console.log('LOCKED MONTHS → parsed months:', months)
+        } else {
+          console.warn('LOCKED MONTHS → no departmentId in localStorage')
+          setLockedMonths([])
+        }
+      } catch (error) {
+        console.error('LOCKED MONTHS → error:', error)
+        setLockedMonths([])
+      }
+    }
+    
+    loadLockedMonths()
+  }, [])
 
   // Load Westgard rules
   const loadWestgardRules = async () => {
@@ -221,7 +269,7 @@ const EntryPage: React.FC = () => {
           
           const opts: { value: string; label: string }[] = Array.from(qcLevelMap.entries()).map(([id, name]) => ({
             value: id,
-            label: name
+            label: typeof name === 'string' ? name : name.name
           }))
           
           console.log('QC Level options:', opts)
@@ -234,10 +282,10 @@ const EntryPage: React.FC = () => {
           // Auto-select first QC level if none selected
           if (opts.length > 0) {
             if (!qcLevelId || !opts.some((o: any) => o.value === qcLevelId)) {
-              const first = opts[0]
+          const first = opts[0]
               console.log('Auto-selecting QC level:', first)
-              setQcLevelId(first.value)
-              setQcSelect(first.label)
+            setQcLevelId(first.value)
+            setQcSelect(first.label)
             } else {
               console.log('QC level already selected:', qcLevelId)
             }
@@ -305,17 +353,24 @@ const EntryPage: React.FC = () => {
         machineId: selectedMachine,
         dateFrom: startDate,
         dateTo: endDate,
-        page: pagination.page,
-        pageSize: pagination.pageSize
+        page: currentPage,
+        pageSize: pageSize
       }
       
       console.log('Debug - calling API with params:', params)
       
       const response = await entryService.list(params)
       if (response.success && response.data) {
-        const items = 'items' in response.data ? response.data.items : []
-        console.log('Loaded entries:', items.length)
-        setEntries(items)
+        if ('items' in response.data) {
+          const { items, total } = response.data
+          console.log('Loaded entries:', items.length, 'total:', total)
+          setEntries(items)
+          setTotal(total as number)
+        } else {
+          const items = response.data as any[]
+          setEntries(items)
+          setTotal(items.length)
+        }
       } else {
         setEntries([])
       }
@@ -330,7 +385,7 @@ const EntryPage: React.FC = () => {
   // Load entries - chỉ load khi có đủ lot + machine + qcLevel
   useEffect(() => {
     loadEntriesData()
-  }, [selectedLotId, selectedMachine, qcLevelId, range, pagination.page, pagination.pageSize])
+  }, [selectedLotId, selectedMachine, qcLevelId, range, currentPage, pageSize])
 
   // Compute Westgard status per entry whenever data/spec changes
   useEffect(() => {
@@ -396,6 +451,18 @@ const EntryPage: React.FC = () => {
       entry.analyteName.toLowerCase().includes(searchText.toLowerCase())
     )
   }, [entries, searchText])
+
+  // Debug log for entries data
+  useEffect(() => {
+    if (entries.length > 0) {
+      console.log('=== ENTRY DATA DEBUG ===')
+      console.log('First entry:', entries[0])
+      console.log('analyteName type:', typeof entries[0]?.analyteName)
+      console.log('qcLevelName type:', typeof entries[0]?.qcLevelName)
+      console.log('lotCode type:', typeof entries[0]?.lotCode)
+      console.log('========================')
+    }
+  }, [entries])
 
   // Table columns
   const columns = [
@@ -499,28 +566,39 @@ const EntryPage: React.FC = () => {
       title: 'Thao tác',
       key: 'action',
       align: 'center' as const,
-      render: (_: any, record: Entry) => (
-        <Space size="small">
-          <Button 
-            size="small" 
-            type="primary"
-            ghost
-            icon={<EditOutlined />}
-            onClick={() => {
-              setEditValue(record.value)
-              setEditDate(dayjs(record.date))
-              setEditEntryId(record.id)
-              setEditModalOpen(true)
-            }}
-          >
-            Sửa
-          </Button>
-          <Button 
-            size="small" 
-            danger
-            ghost
-            icon={<DeleteOutlined />}
-            onClick={() => {
+      render: (_: any, record: Entry) => {
+        const entryMonth = dayjs(record.date).format('YYYY-MM')
+        const isEntryMonthLocked = lockedMonths.includes(entryMonth)
+        console.log('Entry month check:', { entryMonth, lockedMonths, isEntryMonthLocked })
+        
+        const currentUser = (typeof localStorage !== 'undefined' && localStorage.getItem('fullName')) || ''
+        const isOwner = (record.createdBy && currentUser) ? (record.createdBy === currentUser) : true
+        return (
+          <Space size="small">
+            <Button 
+              size="small" 
+              type="primary"
+              ghost
+              icon={<EditOutlined />}
+              disabled={isEntryMonthLocked || !isOwner}
+              title={isEntryMonthLocked ? 'Tháng này đã bị khóa, không thể sửa' : (!isOwner ? 'Chỉ được sửa dữ liệu do bạn tạo' : '')}
+              onClick={() => {
+                setEditValue(record.value)
+                setEditDate(dayjs(record.date))
+                setEditEntryId(record.id)
+                setEditModalOpen(true)
+              }}
+            >
+              Sửa
+            </Button>
+            <Button 
+              size="small" 
+              danger
+              ghost
+              icon={<DeleteOutlined />}
+              disabled={isEntryMonthLocked || !isOwner}
+              title={isEntryMonthLocked ? 'Tháng này đã bị khóa, không thể xóa' : (!isOwner ? 'Chỉ được xóa dữ liệu do bạn tạo' : '')}
+              onClick={() => {
               Modal.confirm({
                 title: 'Xóa dữ liệu QC',
                 content: `Bạn có chắc chắn muốn xóa dữ liệu "${record.analyteName}" ngày ${dayjs(record.date).format('DD/MM/YYYY')}?`,
@@ -549,7 +627,8 @@ const EntryPage: React.FC = () => {
             Xóa
           </Button>
         </Space>
-      ),
+        )
+      },
     },
   ]
 
@@ -600,6 +679,20 @@ const EntryPage: React.FC = () => {
   return (
     <div style={{ padding: '24px' }}>
       
+      {/* Locked Month Warning */}
+      {isCurrentMonthLocked && (
+        <div style={{ 
+          marginBottom: 16, 
+          padding: 12, 
+          background: '#fff2e8', 
+          border: '1px solid #ffb366', 
+          borderRadius: 6,
+          color: '#d46b08'
+        }}>
+          <strong>⚠️ Tháng này đã bị khóa:</strong> Không thể thêm, sửa hoặc xóa dữ liệu trong tháng {range?.[0]?.format('MM/YYYY')}. Chỉ có thể xem và xuất dữ liệu.
+        </div>
+      )}
+
       {/* Controls */}
       <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         <Select
@@ -649,138 +742,73 @@ const EntryPage: React.FC = () => {
           onChange={setRange}
           format="DD/MM/YYYY"
         />
-        <Button type="primary" onClick={onCreate} disabled={!selectedLot || !selectedMachine}>
+        <Button 
+          type="primary" 
+          onClick={onCreate} 
+          disabled={!selectedLot || !selectedMachine || isCurrentMonthLocked}
+          title={isCurrentMonthLocked ? 'Tháng này đã bị khóa, không thể thêm dữ liệu' : ''}
+        >
           + Thêm dữ liệu
         </Button>
-        <Button onClick={() => (document.getElementById('entry-file-input') as HTMLInputElement)?.click()}>
+        <Button 
+          onClick={() => (document.getElementById('entry-file-input') as HTMLInputElement)?.click()}
+          disabled={isCurrentMonthLocked}
+          title={isCurrentMonthLocked ? 'Tháng này đã bị khóa, không thể nhập từ file' : ''}
+        >
           Nhập từ file
         </Button>
-        <Button onClick={async () => {
-          if (!selectedLotId || !selectedMachine) {
-            message.warning('Chọn lô và máy trước khi xuất file')
-            return
-          }
-          
-          try {
-            const month = range?.[0]?.format('YYYY-MM') || dayjs().format('YYYY-MM')
-            const filename = `QC_${selectedLot}_${month}.xlsx`
-            
-            // Lấy tất cả entries cho tất cả QC levels
-            const allQcLevels = qcLevelOptions || []
-            const sheets = []
-            
-            for (const qcLevel of allQcLevels) {
-              console.log(`Loading entries for QC level: ${qcLevel.label}`)
-              
-              // Load entries cho từng QC level
-              const qcEntriesResponse = await entryService.list({
+        <Button 
+          onClick={async () => {
+            try {
+              message.loading('Đang xuất file...', 0)
+              // Fetch all entries for current filters (ignore pagination)
+              const startDate = range?.[0]?.format('YYYY-MM-DD')
+              const endDate = range?.[1]?.format('YYYY-MM-DD')
+              const params: any = {
                 lotId: selectedLotId,
-                qcLevelId: qcLevel.value,
+                qcLevelId: qcLevelId,
                 machineId: selectedMachine,
-                dateFrom: range?.[0]?.format('YYYY-MM-DD'),
-                dateTo: range?.[1]?.format('YYYY-MM-DD'),
-                page: 1,
-                pageSize: 10000
-              })
-              const qcEntries = qcEntriesResponse.data?.items || []
-              
-              // Load limits để tính cảnh báo Westgard
-              const limitsResponse = await limitService.list({
-            lotId: selectedLotId,
-                qcLevel: qcLevel.value,
-            machineId: selectedMachine,
-                page: 1,
-                pageSize: 1000
-              })
-              const limits = limitsResponse.data?.items || []
-              const specByAnalyte: Record<string, { mean: number; sd: number }> = {}
-              limits.forEach((l: any) => {
-                const key = l.analyteId
-                if (key) specByAnalyte[key] = { mean: Number(l.mean), sd: Number(l.sd) }
-              })
-              
-              if (qcEntries && qcEntries.length > 0) {
-                // Dùng trực tiếp dữ liệu từ backend
-                const entriesWithAnalyteInfo = qcEntries.map((entry: any) => ({
-                  ...entry,
-                  analyteName: entry.analyteName,
-                  date: entry.entryDate
-                }))
-                
-                // Filter theo search text nếu có
-                const filteredQcEntries = searchText 
-                  ? entriesWithAnalyteInfo.filter((entry: any) => 
-                      entry.analyteName.toLowerCase().includes(searchText.toLowerCase())
-                    )
-                  : entriesWithAnalyteInfo
-                
-                // Tính cảnh báo Westgard cho từng entry theo chuỗi thời gian từng xét nghiệm
-                const warningById: Record<string, { level: 'pass'|'warning'|'error'|'critical'; violated: string[] }> = {}
-                const byAnalyte: Record<string, any[]> = {}
-                filteredQcEntries.forEach((e: any) => {
-                  const k = e.analyteId
-                  if (!byAnalyte[k]) byAnalyte[k] = []
-                  byAnalyte[k].push(e)
-                })
-                Object.values(byAnalyte).forEach((list: any[]) => {
-                  const ordered = [...list].sort((a: any, b: any) => (a.entryDate as string).localeCompare(b.entryDate) || String(a.id).localeCompare(String(b.id)))
-                  const key = ordered[0]?.analyteId
-                  const spec = specByAnalyte[key]
-                  if (!spec || !isFinite(spec.sd) || spec.sd === 0) return
-                  
-                  const vals: number[] = ordered.map((e: any) => Number(e.value))
-                  
-                  // Evaluate each entry using Westgard rules
-                  for (let i = 0; i < ordered.length; i++) {
-                    const entry = ordered[i]
-                    const valuesUpToNow = vals.slice(0, i + 1)
-                    
-                    // Use evaluateWithRules from utils
-                    const result = evaluateWithRules(valuesUpToNow, spec.mean, spec.sd, westgardRules)
-                    warningById[entry.id] = result
-                  }
-                })
-
-                // Tạo data cho sheet
-                const sheetData = filteredQcEntries.map((entry: any) => ({
-                  'Bộ XN': entry.analyteName,
-                  'Ngày nhập': dayjs(entry.date).format('DD/MM/YYYY'),
-                  'Giá trị': entry.value,
-                  'Cảnh báo': (warningById[entry.id]?.violated || []).join(', '),
-                  'Tạo bởi': entry.createdBy || 'System',
-                  'Cập nhật bởi': entry.updatedBy || 'System'
-                }))
-                
-                if (sheetData.length > 0) {
-                  sheets.push({
-                    name: qcLevel.label,
-                    rows: sheetData,
-                    headerOrder: ['Bộ XN', 'Ngày nhập', 'Giá trị', 'Cảnh báo', 'Tạo bởi', 'Cập nhật bởi']
-                  })
-                }
+                dateFrom: startDate,
+                dateTo: endDate
               }
+              const allEntries = await fetchAllPaginated(entryService.list as any, params, 1000)
+
+              // Compute warnings for all entries using current limits and rules
+              const groups: Record<string, Entry[]> = {}
+              allEntries.forEach((e: Entry) => {
+                const k = e.analyteId
+                if (!groups[k]) groups[k] = []
+                groups[k].push(e)
+              })
+              const allStatus: Record<string, { level: 'pass'|'warning'|'error'|'critical'; violated: string[] }> = {}
+              Object.values(groups).forEach(list => {
+                const spec = limitMap[list[0]?.analyteId]
+                if (!spec) return
+                const ordered = [...list].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+                const vals: number[] = ordered.map(e => Number(e.value))
+                for (let i = 0; i < ordered.length; i++) {
+                  const entry = ordered[i]
+                  const valuesUpToNow = vals.slice(0, i + 1)
+                  const result = evaluateWithRules(valuesUpToNow, spec.mean, spec.sd, westgardRules)
+                  allStatus[entry.id] = result
+                }
+              })
+
+              const enriched = allEntries.map((e: any) => ({
+                ...e,
+                warnings: allStatus[e.id]?.violated || []
+              }))
+              exportEntriesToExcel(enriched)
+              message.destroy()
+              message.success('Xuất file thành công')
+            } catch (error) {
+              console.error('Export error:', error)
+              message.error('Lỗi khi xuất file')
             }
-            
-            if (sheets.length === 0) {
-              message.warning('Không có dữ liệu để xuất')
-              return
-            }
-            
-            // Export tất cả sheets
-            exportToXlsx(filename, sheets)
-            message.success(`Đã xuất ${sheets.length} sheet với tổng ${sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0)} bản ghi`)
-            
-          } catch (error) {
-            console.error('Export error:', error)
-            message.error('Lỗi khi xuất file')
-          }
-        }}>
+          }}
+        >
           Xuất ra file
         </Button>
-      </Space>
-
-      {/* Search */}
-      <Space style={{ marginBottom: 16 }}>
         <Input.Search
           placeholder="Tìm kiếm xét nghiệm..."
           value={searchText}
@@ -797,19 +825,19 @@ const EntryPage: React.FC = () => {
         rowKey="id"
         loading={loading}
         pagination={{
-          current: pagination.page,
-          pageSize: pagination.pageSize,
-          total: filteredEntries.length,
+          current: currentPage,
+          pageSize: pageSize,
+          total: total,
           showSizeChanger: true,
           showQuickJumper: true,
           showTotal: (total, range) => `${range[0]}-${range[1]} của ${total} bản ghi`,
           onChange: (page, size) => {
-            pagination.setPage(page)
-            pagination.setPageSize(size || 20)
+            setCurrentPage(page)
+            setPageSize(size || pageSize)
           },
           onShowSizeChange: (_, size) => {
-            pagination.setPage(1)
-            pagination.setPageSize(size)
+            setCurrentPage(1)
+            setPageSize(size)
           }
         }}
         scroll={{ x: 800 }}
@@ -824,17 +852,22 @@ const EntryPage: React.FC = () => {
         onChange={async (e) => {
           const file = e.currentTarget.files?.[0]
           if (!file) return
+          console.log('[IMPORT_UI] file selected:', file?.name)
           try {
             if (!selectedLotId || !selectedMachine || !qcLevelId) { 
+              console.warn('[IMPORT_UI] missing filters:', { selectedLotId, selectedMachine, qcLevelId })
               message.warning('Chọn lô, máy và mức QC')
               return 
             }
             const month = range?.[0]?.format('YYYY-MM') || dayjs().format('YYYY-MM')
+            console.log('[IMPORT_UI] calling importEntriesFromXlsx', { lotId: selectedLotId, machineId: selectedMachine, month })
             const res = await importEntriesFromXlsx(file, { 
               lotId: selectedLotId, 
               machineId: selectedMachine, 
+              qcLevelId: qcLevelId!,
               month 
             })
+            console.log('[IMPORT_UI] import result:', res)
             message.success(`Nhập ${res.created} giá trị QC thành công`)
             if (res.errors.length) console.warn('Entry import errors:', res.errors)
             // Reload data
@@ -844,6 +877,7 @@ const EntryPage: React.FC = () => {
               console.error('Reload entries failed:', error)
             }
           } catch (e) {
+            console.error('[IMPORT_UI] import failed:', e)
             message.error('Import thất bại')
           }
           e.currentTarget.value = ''
@@ -862,7 +896,7 @@ const EntryPage: React.FC = () => {
           form={form}
           onSave={async (values: EntryFormValues) => {
             try {
-              await entryService.create({
+              const created = await entryService.create({
                 lotId: values.lotId,
                 machineId: values.machineId,
                 qcLevelId: values.qcLevelId,
@@ -872,6 +906,33 @@ const EntryPage: React.FC = () => {
                 note: values.note
               })
               message.success('Đã thêm dữ liệu QC')
+              // FE-evaluated Westgard -> create violations immediately
+              try {
+                const limitKey = values.analyteId
+                const spec = limitMap[limitKey]
+                if (spec && isFinite(spec.sd) && spec.sd !== 0) {
+                  const result = evaluateWithRules([Number(values.value)], spec.mean, spec.sd, westgardRules)
+                  const violated = result.violated || []
+                  for (const code of violated) {
+                    const severity = code === '1-3s' ? 'error' : code === '1-2s' ? 'warning' : 'critical'
+                    const content = `Ngày ${values.date.format('DD/MM')}, vi phạm nguyên tắc ${code}`
+                    await violationService.create({
+                      analyteId: values.analyteId,
+                      lotId: values.lotId,
+                      qcLevelId: values.qcLevelId,
+                      machineId: values.machineId,
+                      entryDate: values.date.format('YYYY-MM-DD'),
+                      value: Number(values.value),
+                      ruleCode: code as any,
+                      severity: severity as any,
+                      content,
+                      status: 'pending'
+                    })
+                  }
+                }
+              } catch (err) {
+                console.error('Create FE-evaluated violations failed:', err)
+              }
                   setOpen(false)
               form.resetFields()
               // Reload entries data

@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Button, DatePicker, Input, Select, Space, Table, Tag, Tooltip } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
+import { lotService } from '../services/lot.service'
+import { machineService } from '../services/machine.service'
+import { limitService } from '../services/limit.service'
+import { entryService } from '../services/entry.service'
+import { convertToExcel, downloadFile } from '../utils/export'
 
 type Row = {
   id: string
@@ -36,14 +41,17 @@ const SigmaPage: React.FC = () => {
     let mounted = true
     ;(async () => {
       try {
-        const lots = await (window as any).iqc?.lookups?.lots?.()
+        const response = await lotService.list({ page: 1, pageSize: 1000 })
         if (!mounted) return
         
-        const opts = (lots || []).map((l: any) => ({ value: l.code, label: l.code, id: l.id }))
-        setLotOptions(opts)
-        if (opts[0]) {
-          setLot(opts[0].value)
-          setLotId(opts[0].id || '')
+        if (response.success && response.data) {
+          const lots = 'items' in response.data ? response.data.items : response.data
+          const opts = lots.map((l: any) => ({ value: l.code, label: l.code, id: l.id }))
+          setLotOptions(opts)
+          if (opts[0]) {
+            setLot(opts[0].value)
+            setLotId(opts[0].id || '')
+          }
         }
       } catch (err) {
         console.error('Failed to load lots:', err)
@@ -57,11 +65,15 @@ const SigmaPage: React.FC = () => {
     ;(async () => {
       try {
         if (!lotId) { setMachineOptions([]); setMachine(''); return }
-        const machines = await (window as any).iqc?.lookups?.machinesByLotId?.(lotId)
-        const opts = (machines || []).map((m: any) => ({ value: m.id, label: `${m.device_code} - ${m.name}` }))
-        setMachineOptions(opts)
-        if (!machine || !opts.some((o: { value: string }) => o.value === machine)) {
-          setMachine(opts[0]?.value || '')
+        
+        const response = await machineService.list({ lotId, page: 1, pageSize: 1000 })
+        if (response.success && response.data) {
+          const machines = 'items' in response.data ? response.data.items : response.data
+          const opts = machines.map((m: any) => ({ value: m.id, label: `${m.deviceCode} - ${m.name}` }))
+          setMachineOptions(opts)
+          if (!machine || !opts.some((o: { value: string }) => o.value === machine)) {
+            setMachine(opts[0]?.value || '')
+          }
         }
       } catch (err) {
         console.error('Failed to load machines:', err)
@@ -94,7 +106,20 @@ const SigmaPage: React.FC = () => {
       })
       
       // Step 1: Get all qc_limits for this lot and machine (for TEA, Target)
-      const limits = await (window as any).iqc?.limits?.listByLotMachine?.(lotId, machine)
+      const limitsResponse = await limitService.list({
+        lotId,
+        machineId: machine,
+        page: 1,
+        pageSize: 1000
+      })
+      
+      if (!limitsResponse.success || !limitsResponse.data) {
+        console.log('[Sigma] ⚠️ No limits found, stopping')
+        setRows([])
+        return
+      }
+      
+      const limits = 'items' in limitsResponse.data ? limitsResponse.data.items : limitsResponse.data
       console.log('[Sigma] 📋 Step 1 - Limits (specifications) received:', limits?.length || 0)
       console.log('[Sigma] Limits data:', JSON.stringify(limits, null, 2))
       
@@ -108,37 +133,46 @@ const SigmaPage: React.FC = () => {
       const mapped: Row[] = []
       
       for (const limit of limits) {
-        const analyteId = limit.analyte_id
-        const qcLevelId = limit.qc_level_id
-        const analyteName = limit.analyte_name || limit.analyte_code || analyteId
-        const qcLevelName = limit.qc_level_name || qcLevelId
+        const analyteId = limit.analyteId
+        const qcLevelId = limit.qcLevelId
+        const analyteName = limit.analyte?.name || limit.analyte?.code || analyteId
+        const qcLevelName = limit.qcLevel?.name || qcLevelId
         
         console.log(`\n[Sigma] 🔍 Processing: ${analyteName} - ${qcLevelName}`)
         console.log(`[Sigma]   Analyte ID: ${analyteId}, QC Level ID: ${qcLevelId}`)
         
         try {
           // Get entries for this analyte + qc_level + machine in date range
-          const entries = await (window as any).iqc?.entries?.listByContext?.(
+          const entriesResponse = await entryService.list({
             lotId,
             qcLevelId,
-            machine,
-            from,
-            to
-          )
+            machineId: machine,
+            dateFrom: from,
+            dateTo: to,
+            page: 1,
+            pageSize: 1000
+          })
+          
+          if (!entriesResponse.success || !entriesResponse.data) {
+            console.log(`[Sigma] ⚠️ No entries found for ${analyteName} - ${qcLevelName}`)
+            continue
+          }
+          
+          const entries = 'items' in entriesResponse.data ? entriesResponse.data.items : entriesResponse.data
           
           console.log(`[Sigma]   📊 Step 2 - Entries received: ${entries?.length || 0}`)
           if (entries && entries.length > 0) {
             console.log(`[Sigma]   First 5 entries:`, entries.slice(0, 5).map((e: any) => ({
-              date: e.entry_date,
+              date: e.date,
               value: e.value,
-              analyte: e.analyte_code || e.analyte_id
+              analyte: e.analyteId
             })))
           }
           
           // Filter entries for this specific analyte
           const analyteEntries = (entries || []).filter((e: any) => {
-            const entryAnalyteId = e.analyte_id || e.analyte_code
-            return entryAnalyteId === analyteId || entryAnalyteId === limit.analyte_code
+            const entryAnalyteId = e.analyteId
+            return entryAnalyteId === analyteId
           })
           
           console.log(`[Sigma]   ✅ Filtered entries for ${analyteName}: ${analyteEntries.length}`)
@@ -462,7 +496,33 @@ const SigmaPage: React.FC = () => {
           disabled={!lot}
         />
         <DatePicker.RangePicker value={range as any} onChange={(v)=> setRange(v as any)} />
-        <Button disabled={!lot || !machine}>Xuất ra excel</Button>
+        <Button disabled={!lot || !machine} onClick={() => {
+          try {
+            const exportRows = withSpan.map((r: any) => {
+              const cv = (r.sd / (r.mean || 1)) * 100
+              const sigma = (r.tea && cv) ? (r.tea - Math.abs(r.bias)) / cv : 0
+              return {
+                'Bộ XN': r.test,
+                'Mức QC': r.qc,
+                'Target': Number(r.target || 0),
+                'Mean': Number(r.mean || 0),
+                'SD': Number(r.sd || 0),
+                'Bias%': Number(r.bias || 0),
+                'CV%': Number(cv || 0),
+                'TEA%': Number(r.tea || 0),
+                'Sigma': Number(sigma || 0),
+                'Số mẫu': Number(r.entriesCount || 0)
+              }
+            })
+            const buf = convertToExcel(exportRows)
+            const from = range?.[0]?.format?.('YYYY-MM-DD')
+            const to = range?.[1]?.format?.('YYYY-MM-DD')
+            const filename = `sigma_${lot || 'ALL'}_${dayjs().format('YYYYMMDD_HHmm')}${from && to ? `_${from}_to_${to}` : ''}.xlsx`
+            downloadFile(buf, filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+          } catch (e) {
+            console.error('Sigma export error:', e)
+          }
+        }}>Xuất ra excel</Button>
         <Input.Search
           placeholder="Tìm kiếm xét nghiệm..."
           prefix={<SearchOutlined />}

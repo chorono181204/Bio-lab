@@ -4,7 +4,14 @@ import { UserDTO } from '../libs/types/user'
 
 
 export async function getUserById(id: string) {
-  return prisma.user.findUnique({ where: { id } })
+  return prisma.user.findUnique({ 
+    where: { id },
+    include: {
+      department: {
+        select: { id: true, name: true }
+      }
+    }
+  })
 }
 
 export async function getUserByUsername(username: string) {
@@ -31,7 +38,7 @@ export async function createUser(input: UserDTO) {
 }
 
 export async function updateUser(input: UserDTO) {
-  const { id, password, departmentId, ...data } = input
+  const { id, password, departmentId, dob, ...data } = input
   // Only update non-password fields
   const updateData: any = { ...data }
   
@@ -43,6 +50,11 @@ export async function updateUser(input: UserDTO) {
   // If departmentId is provided, add it to the update
   if (departmentId) {
     updateData.departmentId = departmentId
+  }
+  
+  // Handle dob field - convert string to Date if provided
+  if (dob) {
+    updateData.dob = new Date(dob)
   }
   
   return prisma.user.update({ where: { id }, data: updateData })

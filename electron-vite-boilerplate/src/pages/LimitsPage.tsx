@@ -4,7 +4,7 @@ import { exportLimitsByLotMachine, importLimitsFromXlsx } from '../utils/limitsI
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useApi, usePagination } from '../hooks'
-import { limitService, QCLimit, analyteService, lotService, qcLevelService, machineService, biasMethodService } from '../services'
+import { limitService, QCLimit, analyteService, lotService, qcLevelService, machineService } from '../services'
 import QCLimitForm from '../components/limits/QCLimitForm'
 
 // Types are now imported from services
@@ -50,10 +50,33 @@ const LimitsPage: React.FC = () => {
   const { data: apiData, loading, execute: loadLimits } = useApi(limitService.list)
   const pagination = usePagination({ initialPage: 1, initialPageSize: 20 })
   const data = apiData && 'items' in apiData ? apiData.items : []
+
+  const reloadLimitsNow = React.useCallback(async () => {
+    await loadLimits({
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      search: debouncedSearchText || undefined,
+      lotId: selectedLotId,
+      machineId: selectedMachineFilter,
+      qcLevel: selectedQc
+    })
+  }, [loadLimits, pagination.page, pagination.pageSize, debouncedSearchText, selectedLotId, selectedMachineFilter, selectedQc])
+  
+  // Debug log for data
+  useEffect(() => {
+    if (data.length > 0) {
+      console.log('=== LIMITS DATA DEBUG ===')
+      console.log('First item:', data[0])
+      console.log('Analyte object:', data[0]?.analyte)
+      console.log('QcLevel object:', data[0]?.qcLevel)
+      console.log('Lot object:', data[0]?.lot)
+      console.log('Machine object:', data[0]?.machine)
+      console.log('========================')
+    }
+  }, [data])
   
   const [checkedAnalytes, setCheckedAnalytes] = useState<string[]>([])
   const [qcLevelOptions, setQcLevelOptions] = useState<{ value: string; label: string }[]>([])
-  const [biasMethods, setBiasMethods] = useState<{ id: string; name: string }[]>([])
   
   // Debounced search
   useEffect(() => {
@@ -106,9 +129,23 @@ const LimitsPage: React.FC = () => {
   // Load data on mount and when filters change
   useEffect(() => {
     // Only call API when all required filters are loaded
-    if (qcLevelOptions.length === 0) {
+    if (qcLevelOptions.length === 0 || lotOptions.length === 0 || analyteOptions.length === 0) {
+      console.log('=== WAITING FOR OPTIONS ===')
+      console.log('qcLevelOptions.length:', qcLevelOptions.length)
+      console.log('lotOptions.length:', lotOptions.length)
+      console.log('analyteOptions.length:', analyteOptions.length)
+      console.log('===========================')
       return
     }
+    
+    console.log('=== CALLING LOAD LIMITS ===')
+    console.log('qcLevelOptions.length:', qcLevelOptions.length)
+    console.log('lotOptions.length:', lotOptions.length)
+    console.log('analyteOptions.length:', analyteOptions.length)
+    console.log('selectedLotId:', selectedLotId)
+    console.log('selectedMachineFilter:', selectedMachineFilter)
+    console.log('selectedQc:', selectedQc)
+    console.log('============================')
     
     loadLimits({
       page: pagination.page,
@@ -138,11 +175,10 @@ const LimitsPage: React.FC = () => {
     const loadInitialData = async () => {
       try {
         setFiltersLoading(true)
-        const [lotsResponse, analytesResponse, qcLevelsResponse, biasMethodsResponse] = await Promise.all([
+        const [lotsResponse, analytesResponse, qcLevelsResponse] = await Promise.all([
           lotService.list({ options: true }),
           analyteService.list({ options: true }),
           qcLevelService.list({ options: true }),
-          biasMethodService.list({ options: true }),
         ])
         
         if (!mounted) return
@@ -275,16 +311,26 @@ const LimitsPage: React.FC = () => {
   // Table columns configuration
   const columns = useMemo(() => [
     { title: 'STT', width: 70, render: (_: any, __: QCLimit, index: number) => (pagination.page - 1) * pagination.pageSize + index + 1 },
-    { title: 'Bộ XN', dataIndex: 'analyteName', width: 160, sorter: true },
-    { title: 'Mức QC', dataIndex: 'qcLevel', width: 100, sorter: true },
-    { title: 'Lô', dataIndex: 'lot', width: 120, sorter: true },
     { 
-      title: 'Máy', 
-      dataIndex: 'machineName', 
-      width: 150, 
+      title: 'Bộ XN', 
+      dataIndex: 'analyte', 
+      width: 160, 
       sorter: true,
-      render: (text: string, record: QCLimit) => 
-        record.applyToMachine ? (text || 'Chưa chọn máy') : 'Không áp dụng'
+      render: (analyte: any) => analyte ? `${analyte.code} - ${analyte.name}` : '-'
+    },
+    { 
+      title: 'Mức QC', 
+      dataIndex: 'qcLevel', 
+      width: 100, 
+      sorter: true,
+      render: (qcLevel: any) => qcLevel ? qcLevel.name : '-'
+    },
+    { 
+      title: 'Lô', 
+      dataIndex: 'lot', 
+      width: 120, 
+      sorter: true,
+      render: (lot: any) => lot ? lot.code : '-'
     },
     { 
       title: '-2SD', 
@@ -319,11 +365,14 @@ const LimitsPage: React.FC = () => {
       title: 'Cách tính BIAS', 
       dataIndex: 'biasMethod', 
       width: 160,
-      render: (biasMethodId: string) => {
-        if (!biasMethodId) return '-'
-        // Find the bias method name by ID
-        const biasMethod = biasMethods.find(method => method.id === biasMethodId)
-        return biasMethod ? biasMethod.name : biasMethodId
+      render: (biasMethod: any) => {
+        if (!biasMethod) return '-'
+        // biasMethod is now an object with id and name
+        console.log('=== BIAS METHOD RENDER DEBUG ===')
+        console.log('biasMethod object:', biasMethod)
+        console.log('biasMethod.name:', biasMethod.name)
+        console.log('================================')
+        return biasMethod.name || '-'
       }
     },
     { title: 'Phương pháp', dataIndex: 'method', width: 160 },
@@ -370,10 +419,11 @@ const LimitsPage: React.FC = () => {
     setEditing(record)
     
     // Find the correct IDs for the form values
-    const analyteOption = analyteOptions.find(a => a.value === record.analyteId)
-    const lotOption = lotOptions.find(l => l.value === record.lot)
-    const qcLevelOption = qcLevelOptions.find(q => q.label === record.qcLevel)
-    const machineOption = machineOptions.find(m => m.value === record.machineId)
+    const analyteOption = analyteOptions.find(a => a.value === record.analyte?.id || record.analyteId)
+    const lotOption = lotOptions.find(l => (l.value === (record.lot?.code || record.lot)))
+    const qcLevelIdFromRecord = (record.qcLevelId || record.qcLevel?.id) as string | undefined
+    const qcLevelOption = qcLevelOptions.find(q => q.value === qcLevelIdFromRecord)
+    const machineOption = machineOptions.find(m => m.value === record.machine?.id || record.machineId)
     
     console.log('Found options:', {
       analyteOption,
@@ -387,7 +437,7 @@ const LimitsPage: React.FC = () => {
       console.log('Lot options not loaded yet, waiting...')
       // Wait a bit for lotOptions to load
       await new Promise(resolve => setTimeout(resolve, 100))
-      const updatedLotOption = lotOptions.find(l => l.value === record.lot)
+      const updatedLotOption = lotOptions.find(l => l.value === record.lot?.code || record.lot)
       if (updatedLotOption?.id) {
         console.log('Found lot option after wait:', updatedLotOption)
         setSelectedLotId(updatedLotOption.id)
@@ -399,8 +449,8 @@ const LimitsPage: React.FC = () => {
     
     const formValues = {
       analyteId: analyteOption?.value || record.analyteId,
-      lot: lotOption?.value || record.lot,
-      qcLevel: qcLevelOption?.value || record.qcLevel,
+      lot: lotOption?.value || record.lot?.code || record.lot,
+      qcLevel: qcLevelOption?.value || qcLevelIdFromRecord,
       machineId: machineOption?.value || record.machineId,
       unit: record.unit,
       decimals: record.decimals,
@@ -414,7 +464,7 @@ const LimitsPage: React.FC = () => {
       exp: record.exp ? dayjs(record.exp) : undefined,
       method: record.method,
       note: record.note,
-      biasMethod: record.biasMethod,
+      biasMethod: record.biasMethod?.id || record.biasMethod,
     }
     
     console.log('Setting form values:', formValues)
@@ -431,6 +481,7 @@ const LimitsPage: React.FC = () => {
     try {
       await limitService.delete(id)
       message.success('Xóa thiết lập thành công')
+      await reloadLimitsNow()
     } catch (error) {
       console.error('Delete error:', error)
       message.error('Có lỗi xảy ra khi xóa thiết lập')
@@ -474,7 +525,7 @@ const LimitsPage: React.FC = () => {
         exp: values.exp ? (values.exp as any).format('YYYY-MM-DD') : undefined,
         method: values.method,
         note: values.note,
-        biasMethod: values.biasMethod,
+        biasMethodId: values.biasMethod,
       }
       
       console.log('=== FRONTEND PAYLOAD DEBUG ===')
@@ -495,6 +546,7 @@ const LimitsPage: React.FC = () => {
       }
       
       setOpen(false)
+      await reloadLimitsNow()
     } catch (error) {
       console.error('Save error:', error)
       message.error('Có lỗi xảy ra khi lưu thiết lập')
@@ -571,19 +623,18 @@ const LimitsPage: React.FC = () => {
   // Import XLSX with the SAME structure as exported files
   const importXlsx = async (file: File) => {
     try {
+      if (!selectedLotId) {
+        message.warning('Vui lòng chọn lô trước khi nhập từ file')
+        return
+      }
       if (!selectedMachineFilter) {
         message.warning('Vui lòng chọn máy trước khi nhập từ file')
         return
       }
-      await importLimitsFromXlsx(file, {
-        selectedLotId,
-        selectedLot,
-        selectedQc,
-        selectedMachineId: selectedMachineFilter,
-        currentUser: currentUser as string
-      })
+      await importLimitsFromXlsx(file, { lotId: selectedLotId, machineId: selectedMachineFilter })
       // Data will be reloaded automatically by useApi hook
       message.success('Nhập dữ liệu từ XLSX thành công')
+      await reloadLimitsNow()
     } catch (e) {
       console.error('Import XLSX failed', e)
       message.error('Không thể nhập từ file XLSX')

@@ -1,5 +1,6 @@
 import { prisma } from '../config/db'
 import type { CreateEntryInput, UpdateEntryInput, EntryListParams } from '../libs/types/entry'
+import { createViolationsForEntry } from './violation.service'
 
 export async function getEntryById(id: string) {
   return prisma.entry.findUnique({ 
@@ -48,7 +49,7 @@ export async function listEntries(params: EntryListParams) {
   if (params.options) {
     const items = await prisma.entry.findMany({ 
       where,
-      select: { id: true, value: true, date: true },
+      select: { id: true, value: true, entryDate: true },
       orderBy: { createdAt: 'desc' }
     })
     return items
@@ -87,27 +88,79 @@ export async function listEntries(params: EntryListParams) {
 }
 
 export async function createEntry(input: CreateEntryInput) {
+  console.log('=== CREATE ENTRY SERVICE START ===')
+  console.log('Input:', JSON.stringify(input, null, 2))
+  
   const { date, ...restInput } = input
-  return prisma.entry.create({ 
-    data: {
-      ...restInput,
-      entryDate: new Date(date)
-    },
-    include: {
-      analyte: {
-        select: { id: true, code: true, name: true }
-      },
-      machine: {
-        select: { id: true, deviceCode: true, name: true }
-      },
-      qcLevel: {
-        select: { id: true, name: true }
-      },
-      lot: {
-        select: { id: true, code: true, lotName: true }
-      }
-    }
+  const entryDate = new Date(date)
+  
+  console.log('Processed data:', {
+    ...restInput,
+    entryDate
   })
+  
+  try {
+    // Create entry
+    const entry = await prisma.entry.create({ 
+      data: {
+        ...restInput,
+        entryDate
+      },
+      include: {
+        analyte: {
+          select: { id: true, code: true, name: true }
+        },
+        machine: {
+          select: { id: true, deviceCode: true, name: true }
+        },
+        qcLevel: {
+          select: { id: true, name: true }
+        },
+        lot: {
+          select: { id: true, code: true, lotName: true }
+        }
+      }
+    })
+
+    console.log('Entry created successfully:', JSON.stringify(entry, null, 2))
+
+    // Auto-create violations for this entry
+    try {
+      console.log('Creating violations for entry...')
+      const violations = await createViolationsForEntry({
+        analyteId: entry.analyteId,
+        lotId: entry.lotId,
+        qcLevelId: entry.qcLevelId,
+        machineId: entry.machineId,
+        entryDate: entry.entryDate,
+        value: entry.value,
+        ...(entry.createdBy ? { createdBy: entry.createdBy } : {}),
+        departmentId: (entry as any).departmentId || null
+      })
+      console.log('Violations created:', violations.length)
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error('Error creating violations for entry:', error.message)
+      } else {
+        console.error('Error creating violations for entry:', error)
+      }
+      // Don't fail the entry creation if violation creation fails
+    }
+
+    console.log('=== CREATE ENTRY SERVICE SUCCESS ===')
+    return entry
+  } catch (error) {
+    console.error('=== CREATE ENTRY SERVICE ERROR ===')
+    if (error instanceof Error) {
+      console.error('Error details:', error.message)
+      console.error('Error name:', error.name)
+      console.error('Error stack:', error.stack)
+    } else {
+      console.error('Unknown error:', error)
+    }
+    console.error('===============================')
+    throw error
+  }
 }
 
 export async function updateEntry(input: UpdateEntryInput) {

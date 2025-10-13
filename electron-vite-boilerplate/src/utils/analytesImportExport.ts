@@ -1,4 +1,5 @@
 import { exportToXlsx, importFromXlsx } from './xlsx'
+import { analyteService } from '../services/analyte.service'
 
 type Analyte = {
   id: string
@@ -33,8 +34,9 @@ export function buildAnalytesXlsxSheet(analytes: Analyte[]) {
 }
 
 export async function exportAnalytesToXlsx() {
-  const analytes = await (window as any).iqc?.analytes?.list?.()
-  const sheets = buildAnalytesXlsxSheet(analytes || [])
+  const res = await analyteService.list({ page: 1, pageSize: 10000 })
+  const items = Array.isArray(res.data) ? res.data : (res.data as any)?.items || []
+  const sheets = buildAnalytesXlsxSheet(items as any)
   exportToXlsx('danh_sach_xet_nghiem.xlsx', sheets)
 }
 
@@ -54,7 +56,8 @@ export async function importAnalytesFromXlsx(file: File, currentUser: string) {
   }
 
   // Preload existing analytes once and maintain an in-memory index by code
-  const existingAll = await (window as any).iqc?.analytes?.list?.()
+  const existingRes = await analyteService.list({ page: 1, pageSize: 10000 })
+  const existingAll = Array.isArray(existingRes.data) ? existingRes.data : (existingRes.data as any)?.items || []
   const codeToAnalyte: Record<string, any> = {}
   ;(existingAll || []).forEach((a: any) => { if (a?.code) codeToAnalyte[a.code] = a })
 
@@ -94,33 +97,29 @@ export async function importAnalytesFromXlsx(file: File, currentUser: string) {
 
       if (existingAnalyte) {
         // Update existing
-        await (window as any).iqc?.analytes?.update?.({
+        await analyteService.update(existingAnalyte.id, {
           id: existingAnalyte.id,
           code,
           name,
           unit,
           decimals,
-          quality_requirement: qualityRequirement,
-          note,
-          updated_by: currentUser
-        })
+          qualityRequirement,
+          note
+        } as any)
         results.updated++
       } else {
         // Create new
-        const newId = `an_${Date.now()}-${Math.random().toString(36).slice(2,6)}`
-        const created = await (window as any).iqc?.analytes?.create?.({
-          id: newId,
+        const created = await analyteService.create({
           code,
           name,
           unit,
           decimals,
-          quality_requirement: qualityRequirement,
-          note,
-          created_by: currentUser
-        })
+          qualityRequirement,
+          note
+        } as any)
         results.created++
         // Update index to prevent duplicate creates in the same import batch
-        codeToAnalyte[code] = { id: created?.id || newId, code }
+        codeToAnalyte[code] = { id: (created as any)?.data?.id, code }
       }
     } catch (error) {
       results.skipped++

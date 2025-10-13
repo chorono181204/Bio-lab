@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { ok, fail } from '../libs/utils/response'
 import { parsePagination } from '../libs/utils/pagination'
+import { withDept } from '../middleware/scopeDepartment'
 import {
   listLimits,
   getLimitById,
@@ -29,6 +30,7 @@ export async function list(req: Request, res: Response) {
     console.log('analyteId:', analyteId)
     console.log('search:', search)
     
+    const scope = withDept({}, req)
     const result = await listLimits({
       ...pagination,
       search,
@@ -36,6 +38,7 @@ export async function list(req: Request, res: Response) {
       lotId,
       machineId,
       qcLevel,
+      departmentId: scope.departmentId,
       options
     })
     
@@ -83,6 +86,7 @@ export async function create(req: Request, res: Response) {
     const input = {
       ...req.body,
       createdBy: userFullName,
+      departmentId: user?.departmentId,
       exp: req.body.exp ? new Date(req.body.exp) : undefined
     }
     

@@ -1,0 +1,27 @@
+/* Custom menu hover styles */
+.ant-menu-light .ant-menu-item:hover {
+  background-color: #e6f7ff !important;
+  color: #1890ff !important;
+}
+
+.ant-menu-light .ant-menu-submenu:hover > .ant-menu-submenu-title {
+  background-color: #e6f7ff !important;
+  color: #1890ff !important;
+}
+
+.ant-menu-light .ant-menu-submenu-title:hover {
+  background-color: #e6f7ff !important;
+  color: #1890ff !important;
+}
+
+/* Active/selected state */
+.ant-menu-light .ant-menu-item-selected {
+  background-color: #e6f7ff !important;
+  color: #1890ff !important;
+}
+
+.ant-menu-light .ant-menu-submenu-selected > .ant-menu-submenu-title {
+  background-color: #e6f7ff !important;
+  color: #1890ff !important;
+}
+

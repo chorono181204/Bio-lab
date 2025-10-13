@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, DatePicker, Select, Space, Typography, Card } from 'antd'
+import { Button, DatePicker, Select, Space, Typography, Card, message } from 'antd'
 import LJChartComp, { Point, Limits } from '../components/charts/LJChart'
 import dayjs from 'dayjs'
 import { lotService, machineService, analyteService, limitService, entryService } from '../services'
+import { exportLJToExcelWithCharts, svgToPngDataUrl, exportLJToExcelFromTemplate } from '../utils/exportLJ'
 
 // types moved to component
 
@@ -130,6 +131,7 @@ const LJPage: React.FC = () => {
   const qc1Ref = useRef<SVGSVGElement|null>(null)
   const qc2Ref = useRef<SVGSVGElement|null>(null)
   const [activeTab, setActiveTab] = useState(0)
+  const [noteText, setNoteText] = useState('')
 
   // Tạo danh sách charts động từ tất cả QC levels (ID + tên thật)
   const charts = React.useMemo(() => {
@@ -162,7 +164,8 @@ const LJPage: React.FC = () => {
   // Load current user info from localStorage (được set sau khi đăng nhập)
   useEffect(() => {
     try {
-      const position = localStorage.getItem('position') || localStorage.getItem('role') || ''
+      // Lấy đúng "Chức vụ" (position) thay vì role nội bộ
+      const position = localStorage.getItem('position') || localStorage.getItem('roleDisplay') || ''
       const fullName = localStorage.getItem('fullName') || localStorage.getItem('username') || ''
       setUserPosition(position)
       setUserFullName(fullName)
@@ -258,7 +261,7 @@ const LJPage: React.FC = () => {
             if (limit.qcLevel && limit.qcLevelId) {
               qcLevelMap.set(limit.qcLevelId, {
                 id: limit.qcLevelId,
-                name: limit.qcLevel
+                name: typeof limit.qcLevel === 'string' ? limit.qcLevel : limit.qcLevel.name
               })
             }
           })
@@ -432,11 +435,36 @@ const LJPage: React.FC = () => {
           ]} 
         />
         <DatePicker.RangePicker value={range as any} onChange={(v)=> setRange(v as any)} />
-        <Button disabled={!selectedLot || !selectedMachine} onClick={()=>window.print()}>In</Button>
-        <Button type="primary" disabled={!selectedLot || !selectedMachine} onClick={()=>{
-          if(qc1Ref.current) exportSVG(qc1Ref.current, `${activeAnalyte}-QC1.svg`)
-          if(qc2Ref.current) exportSVG(qc2Ref.current, `${activeAnalyte}-QC2.svg`)
-        }}>Lưu biểu đồ</Button>
+        <Button type="primary" disabled={!selectedLot || !selectedMachine} onClick={async () => {
+          try {
+            message.loading({ content: 'Đang lưu biểu đồ...', key: 'lj-save', duration: 0 })
+            const analyteName = analyteOptions.find(a => a.value === activeAnalyte)?.label || activeAnalyte
+            const rangeText = range && range[0] && range[1] ? `${range[0].format('DD/MM/YYYY')} - ${range[1].format('DD/MM/YYYY')}` : ''
+            const qcNames = (qcLevels || []).map(l => l.name)
+            const chartsImgs: { title: string; pngDataUrl: string }[] = []
+            if (qc1Ref.current) chartsImgs.push({ title: qcNames[0] || 'QC1', pngDataUrl: await svgToPngDataUrl(qc1Ref.current) })
+            if (qc2Ref.current) chartsImgs.push({ title: qcNames[1] || 'QC2', pngDataUrl: await svgToPngDataUrl(qc2Ref.current) })
+            const params = (qcLevels || []).map(lvl => {
+              const lim = limitsByLevel[lvl.id] || { mean: 0, sd: 0, cv: undefined as any, cvRef: undefined as any, unit: undefined as any, exp: undefined as any, method: undefined as any }
+              return { qc: lvl.name, mean: lim.mean, sd: lim.sd, cv: lim.cv, cvRef: lim.cvRef, unit: lim.unit, exp: lim.exp ? dayjs(lim.exp).format('DD/MM/YYYY') : undefined, method: lim.method }
+            })
+            await exportLJToExcelWithCharts({
+              analyteName,
+              lotCode: selectedLot,
+              machineLabel: machineOptions.find(m => m.value === selectedMachine)?.label || selectedMachine,
+              rangeText,
+              note: noteText,
+              charts: chartsImgs,
+              parameters: params,
+              exportedBy: `${userFullName || ''}${userPosition ? ` (${userPosition})` : ''}`,
+              filename: `lj_${analyteName}_${Date.now()}.xlsx`
+            })
+            message.success({ content: 'Đã lưu file Excel kèm biểu đồ', key: 'lj-save' })
+          } catch (e) {
+            console.error('Export LJ to Excel error:', e)
+            message.error({ content: 'Lưu thất bại. Kiểm tra console để xem chi tiết.', key: 'lj-save' })
+          }
+        }}>Lưu</Button>
       </Space>
 
       <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr 260px', gap: 16, maxWidth: '1400px', margin: '0 auto' }}>
@@ -469,12 +497,16 @@ const LJPage: React.FC = () => {
         <div style={{ maxWidth: '1000px', overflow: 'auto' }}>
           {/* Tab selector for charts */}
           <div style={{ margin: '0 0 8px 0', display: 'flex', gap: 8 }}>
-            {data.charts.map((c, i) => (
-              <button key={c.qcLevelId} onClick={() => setActiveTab(i)} style={{
+            {[
+              { key: 0, label: 'Biểu đồ 1' },
+              { key: 1, label: 'Biểu đồ 2' },
+              { key: 2, label: 'Biểu đồ 3' }
+            ].map((tab) => (
+              <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
                 padding: '6px 10px', borderRadius: 6, border: '1px solid #d9d9d9', cursor: 'pointer',
-                background: (activeTab === i) ? '#1677ff' : '#fff', color: (activeTab === i) ? '#fff' : '#1677ff',
+                background: (activeTab === tab.key) ? '#1677ff' : '#fff', color: (activeTab === tab.key) ? '#fff' : '#1677ff',
                 fontWeight: 600
-              }}>Biểu đồ {i + 1}</button>
+              }}>{tab.label}</button>
             ))}
           </div>
           {data.charts.map((chart, index) => {
@@ -515,7 +547,7 @@ const LJPage: React.FC = () => {
           <Card size="small" style={{ marginTop: 12 }}>
             <div style={{ height: 120, display: 'flex', alignItems: 'center', padding: 8 }}>
               <span style={{ minWidth: 80, color: '#888' }}>Nhận xét</span>
-              <textarea style={{ flex: 1, height: 90, border: '1px solid #e5e5e5', borderRadius: 6, padding: 8 }} placeholder="Nhập nhận xét..." />
+              <textarea value={noteText} onChange={(e)=> setNoteText(e.target.value)} style={{ flex: 1, height: 90, border: '1px solid #e5e5e5', borderRadius: 6, padding: 8 }} placeholder="Nhập nhận xét..." />
             </div>
           </Card>
         </div>

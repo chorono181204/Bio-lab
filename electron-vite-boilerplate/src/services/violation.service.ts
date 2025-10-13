@@ -32,17 +32,22 @@ export interface Violation {
 }
 
 export interface CreateViolationInput {
-  entryId: string
+  // optional entryId when created from FE directly after create
+  entryId?: string
   analyteId: string
   lotId: string
   qcLevelId: string
   machineId: string
-  ruleId: string
+  // allow either ruleId or ruleCode
+  ruleId?: string
+  ruleCode?: string
   entryDate: string
   value: number
   severity: string
+  content?: string
   message?: string
   departmentId?: string
+  status?: 'pending' | 'approved' | 'rejected'
 }
 
 export interface UpdateViolationInput extends Partial<CreateViolationInput> {

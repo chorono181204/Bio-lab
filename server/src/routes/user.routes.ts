@@ -17,6 +17,9 @@ router.get('/:id', controller.getById)
 // POST /api/users - Create user (admin only)
 router.post('/', controller.create)
 
+// PUT /api/users/profile - Update current user profile (MUST be before /:id route)
+router.put('/profile', controller.updateProfile)
+
 // PUT /api/users/:id - Update user (admin only)
 router.put('/:id', controller.update)
 

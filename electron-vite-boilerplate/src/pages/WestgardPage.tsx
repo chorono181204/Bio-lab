@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Button, DatePicker, Input, Select, Space, Table, Tag, message } from 'antd'
 import { CheckCircleTwoTone, CloseCircleTwoTone, SearchOutlined } from '@ant-design/icons'
+import { exportViolationsToExcel } from '../utils/export'
+import { fetchAllPaginated } from '../utils/fetchAll'
 import WestgardSettingsModal from '../components/westgard/WestgardSettingsModal'
 import dayjs from 'dayjs'
 import { evaluateSingleLevel } from '../utils/westgard'
@@ -8,6 +10,7 @@ import { westgardService } from '../services/westgard.service'
 import { lotService } from '../services/lot.service'
 import { qcLevelService } from '../services/qcLevel.service'
 import { userService } from '../services/user.service'
+import { violationService } from '../services/violation.service'
 
 type Violation = {
   id: string
@@ -15,7 +18,7 @@ type Violation = {
   test: string
   qcLevels: string
   rules: string
-  note: string
+  content: string
   action?: string
   staff?: string
   status?: 'approved' | 'rejected' | undefined
@@ -92,6 +95,7 @@ const WestgardPage: React.FC = () => {
   const [machineOptions, setMachineOptions] = useState<{ value: string; label: string }[]>([])
   const [ruleOptions, setRuleOptions] = useState<{ value: string; label: string }[]>([])
   const [userOptions, setUserOptions] = useState<{ value: string; label: string }[]>([])
+  const [total, setTotal] = useState<number>(0)
 
   // Load lots, rules, and users from backend
   useEffect(() => {
@@ -179,36 +183,66 @@ const WestgardPage: React.FC = () => {
   // Load stored violations only; if trống thì hiển thị trống
   const loadViolations = async () => {
     try {
-      if (!lotId || !machine) { setRows([]); return }
+      if (!lotId || !machine) { setRows([]); setTotal(0); return }
       // Load violations from API
       const from = range?.[0]?.format?.('YYYY-MM-DD')
       const to = range?.[1]?.format?.('YYYY-MM-DD')
-      console.log('[WG] fetch violations', { lotId, machineId: machine, from, to })
+      console.log('[WG] fetch violations', { lotId, machineId: machine, from, to, page: currentPage, pageSize })
       
-      // TODO: Implement violation service API call
-      // const response = await violationService.list({ lotId, machineId: machine, dateFrom: from, dateTo: to })
-      // For now, show empty state
-      console.log('[WG] violations - API not implemented yet')
-      setRows([])
+      // Call violation service API
+      const response = await violationService.list({ 
+        lotId, 
+        machineId: machine, 
+        dateFrom: from, 
+        dateTo: to,
+        page: currentPage,
+        pageSize
+      })
+      
+      if (response.success && response.data) {
+        if ('items' in response.data) {
+          const { items, total } = response.data
+          setRows(items as any)
+          setTotal(total as number)
+          console.log('[WG] violations page loaded:', items.length, 'total:', total)
+        } else {
+          // Fallback (non-paginated)
+          setRows(response.data as any)
+          setTotal((response.data as any[])?.length || 0)
+        }
+      } else {
+        console.log('[WG] no violations found')
+        setRows([]); setTotal(0)
+      }
     } catch (e) {
       console.error('Load violations error', e)
       message.error('Không tải được dữ liệu vi phạm')
-      setRows([])
+      setRows([]); setTotal(0)
     }
   }
 
   // Auto reload when filters change
-  useEffect(() => { loadViolations() }, [lotId, machine, range])
+  useEffect(() => { loadViolations() }, [lotId, machine, range, currentPage, pageSize])
 
   const columns = useMemo(() => ([
     {
       title: 'Nội dung',
-      dataIndex: 'note',
+      dataIndex: 'content',
       render: (text: string) => (
         <div style={{ whiteSpace: 'pre-line' }}>
           {text}
         </div>
       )
+    },
+    {
+      title: 'Mức độ',
+      dataIndex: 'severity',
+      width: 110,
+      render: (v: 'warning'|'error'|'critical') => {
+        const color = v === 'critical' ? 'red' : v === 'error' ? 'orange' : 'gold'
+        const label = v === 'critical' ? 'Nghiêm trọng' : v === 'error' ? 'Lỗi' : 'Cảnh báo'
+        return <Tag color={color}>{label}</Tag>
+      }
     },
     {
       title: 'Hành động khắc phục',
@@ -221,11 +255,14 @@ const WestgardPage: React.FC = () => {
           onChange={(e) => setRows(prev => prev.map(x => x.id === r.id ? { ...x, action: e.target.value } : x))}
           onBlur={async () => {
             try {
-              // TODO: Implement violation update API call
-              // await violationService.update(r.id, { action: r.action, staff: r.staff, status: r.status })
-              console.log('Update violation action - API not implemented yet')
+              await violationService.update(r.id, { 
+                action: r.action,
+                updatedBy: 'Administrator' // TODO: Get from auth context
+              })
+              message.success('Đã cập nhật hành động khắc phục')
             } catch (e) {
               console.error('Error saving action:', e)
+              message.error('Lỗi khi cập nhật hành động khắc phục')
             }
           }}
         />
@@ -240,11 +277,14 @@ const WestgardPage: React.FC = () => {
           onChange={async (v) => {
             setRows(prev => prev.map(x => x.id === r.id ? { ...x, staff: v } : x))
             try {
-              // TODO: Implement violation update API call
-              // await violationService.update(r.id, { action: r.action, staff: v, status: r.status })
-              console.log('Update violation staff - API not implemented yet')
+              await violationService.update(r.id, { 
+                staff: v,
+                updatedBy: 'Administrator' // TODO: Get from auth context
+              })
+              message.success('Đã cập nhật nhân viên')
             } catch (e) {
               console.error('Error saving staff:', e)
+              message.error('Lỗi khi cập nhật nhân viên')
             }
           }}
           options={userOptions}
@@ -264,11 +304,12 @@ const WestgardPage: React.FC = () => {
           <Button 
             type="text" 
             onClick={async () => {
-              setRows(prev => prev.map(x => x.id === r.id ? { ...x, status: 'approved' } : x))
               try {
-                // TODO: Implement violation update API call
-                // await violationService.update(r.id, { action: r.action, staff: r.staff, status: 'approved' })
-                console.log('Approve violation - API not implemented yet')
+                await violationService.update(r.id, { 
+                  status: 'approved',
+                  updatedBy: 'Administrator' // TODO: Get from auth context
+                })
+                setRows(prev => prev.map(x => x.id === r.id ? { ...x, status: 'approved' } : x))
                 message.success('Đã duyệt vi phạm')
               } catch (e) {
                 console.error('Error approving:', e)
@@ -281,11 +322,12 @@ const WestgardPage: React.FC = () => {
           <Button 
             type="text" 
             onClick={async () => {
-              setRows(prev => prev.map(x => x.id === r.id ? { ...x, status: 'rejected' } : x))
               try {
-                // TODO: Implement violation update API call
-                // await violationService.update(r.id, { action: r.action, staff: r.staff, status: 'rejected' })
-                console.log('Reject violation - API not implemented yet')
+                await violationService.update(r.id, { 
+                  status: 'rejected',
+                  updatedBy: 'Administrator' // TODO: Get from auth context
+                })
+                setRows(prev => prev.map(x => x.id === r.id ? { ...x, status: 'rejected' } : x))
                 message.success('Đã từ chối vi phạm')
               } catch (e) {
                 console.error('Error rejecting:', e)
@@ -301,35 +343,7 @@ const WestgardPage: React.FC = () => {
     }
   ]), [userOptions])
 
-  // Filtered and paginated data
-  const filteredData = useMemo(() => {
-    let filtered = rows
-    
-    // Filter by rule
-    if (selectedRule) {
-      filtered = filtered.filter(item => item.rules === selectedRule)
-    }
-    
-    // Filter by search text
-    if (searchText) {
-      const searchLower = searchText.toLowerCase()
-      filtered = filtered.filter(item => 
-        item.test.toLowerCase().includes(searchLower) ||
-        item.qcLevels.toLowerCase().includes(searchLower) ||
-        item.rules.toLowerCase().includes(searchLower) ||
-        item.note.toLowerCase().includes(searchLower) ||
-        item.action?.toLowerCase().includes(searchLower) ||
-        item.staff?.toLowerCase().includes(searchLower)
-      )
-    }
-    return filtered
-  }, [rows, selectedRule, searchText])
-
-  const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize
-    const endIndex = startIndex + pageSize
-    return filteredData.slice(startIndex, endIndex)
-  }, [filteredData, currentPage, pageSize])
+  // Note: Filtering/search can be added as server-side later. For now, show server data as-is.
 
   return (
     <div>
@@ -357,18 +371,36 @@ const WestgardPage: React.FC = () => {
           onChange={(v) => setSelectedRule(v as string | undefined)}
           allowClear
         />
-        <Button disabled={!lot || !machine}>Xuất ra file</Button>
+        <Button 
+          disabled={!lot || !machine}
+          onClick={async () => {
+            try {
+              message.loading('Đang xuất file...', 0)
+              const from = range?.[0]?.format?.('YYYY-MM-DD')
+              const to = range?.[1]?.format?.('YYYY-MM-DD')
+              const all = await fetchAllPaginated(violationService.list as any, { lotId, machineId: machine, dateFrom: from, dateTo: to }, 1000)
+              exportViolationsToExcel(all)
+              message.destroy()
+              message.success('Xuất file thành công')
+            } catch (error) {
+              console.error('Export error:', error)
+              message.error('Lỗi khi xuất file')
+            }
+          }}
+        >
+          Xuất ra file
+        </Button>
         <Button type="primary" onClick={() => setSettingsOpen(true)}>Cài đặt</Button>
       </Space>
 
       <Table
         rowKey="id"
         columns={columns as any}
-        dataSource={paginatedData}
+        dataSource={rows}
         pagination={{
           current: currentPage,
           pageSize: pageSize,
-          total: filteredData.length,
+          total: total,
           showSizeChanger: true,
           showQuickJumper: true,
           showTotal: (total, range) => `${range[0]}-${range[1]} của ${total} mục`,

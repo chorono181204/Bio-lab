@@ -35,14 +35,32 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         .then(response => {
           if (response.success) {
             setUser(response.data)
+            // Update localStorage with fresh data
+            localStorage.setItem('user', JSON.stringify(response.data))
+            localStorage.setItem('username', response.data.username)
+            localStorage.setItem('role', response.data.role || 'user')
+            if (response.data.position) localStorage.setItem('position', response.data.position)
+            localStorage.setItem('fullName', response.data.fullName || response.data.username)
+            localStorage.setItem('departmentId', response.data.departmentId || '')
+            localStorage.setItem('departmentName', response.data.departmentName || '')
           } else {
             localStorage.removeItem('token')
             localStorage.removeItem('user')
+            localStorage.removeItem('username')
+            localStorage.removeItem('role')
+            localStorage.removeItem('fullName')
+            localStorage.removeItem('departmentId')
+            localStorage.removeItem('departmentName')
           }
         })
         .catch(() => {
           localStorage.removeItem('token')
           localStorage.removeItem('user')
+          localStorage.removeItem('username')
+          localStorage.removeItem('role')
+          localStorage.removeItem('fullName')
+          localStorage.removeItem('departmentId')
+          localStorage.removeItem('departmentName')
         })
         .finally(() => {
           setLoading(false)
@@ -64,7 +82,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         localStorage.setItem('user', JSON.stringify(response.data.user))
         localStorage.setItem('username', response.data.user.username)
         localStorage.setItem('role', response.data.user.role || 'user')
+        if (response.data.user.position) localStorage.setItem('position', response.data.user.position)
         localStorage.setItem('fullName', response.data.user.fullName || response.data.user.username)
+        localStorage.setItem('departmentId', response.data.user.departmentId || '')
+        localStorage.setItem('departmentName', response.data.user.departmentName || '')
         setUser(response.data.user)
         console.log('✅ User data saved to localStorage:', {
           token: response.data.token.substring(0, 20) + '...',
@@ -83,6 +104,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const logout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    localStorage.removeItem('username')
+    localStorage.removeItem('role')
+    localStorage.removeItem('fullName')
+    localStorage.removeItem('departmentId')
+    localStorage.removeItem('departmentName')
     setUser(null)
   }
 

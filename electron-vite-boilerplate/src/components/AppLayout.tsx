@@ -1,7 +1,8 @@
-import React, { ReactNode, useState } from 'react'
+import React, { ReactNode, useState, useEffect } from 'react'
 import { Layout, Menu, Dropdown, Button, Avatar } from 'antd'
 import { UserOutlined, LogoutOutlined } from '@ant-design/icons'
 import { User } from '../services/auth.service'
+import '../styles/menu.css'
 
 type MenuItem = {
   key: string
@@ -25,6 +26,12 @@ const { Header, Sider, Content } = Layout
 
 export const AppLayout: React.FC<Props> = ({ menuItems, children, onMenuClick, selectedKey, user, onLogout }) => {
   const [collapsed, setCollapsed] = useState(false)
+  const [departmentName, setDepartmentName] = useState<string>('')
+  
+  useEffect(() => {
+    const deptName = localStorage.getItem('departmentName') || ''
+    setDepartmentName(deptName)
+  }, [user]) // Re-run when user changes
   
   const userMenuItems = [
     {
@@ -84,22 +91,26 @@ export const AppLayout: React.FC<Props> = ({ menuItems, children, onMenuClick, s
           defaultOpenKeys={[menuItems[0]?.key as string]}
           items={menuItems as any}
           onClick={(e)=> onMenuClick?.(e.key)}
+          style={{
+            background: '#fff'
+          }}
         />
       </Sider>
       <Layout style={{ minWidth: 0 }}>
         <Header style={{ background: '#fff', padding: '10px 16px', borderBottom: '1px solid #f0f0f0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ 
               color: '#1976d2', 
               fontWeight: 800, 
               letterSpacing: 0.4,
               fontSize: 18,
               lineHeight: 1.2,
-              textTransform: 'uppercase'
+              textTransform: 'uppercase',
+              textAlign: 'center'
             }}>
-              HỆ THỐNG QUẢN LÝ QC
+              {departmentName ? `Khoa ${departmentName}` : 'HỆ THỐNG QUẢN LÝ QC'}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ position: 'absolute', right: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ color: '#666', fontSize: 14 }}>
                 {user?.fullName || user?.username}
               </span>
@@ -132,7 +143,7 @@ export const AppLayout: React.FC<Props> = ({ menuItems, children, onMenuClick, s
             zIndex: 1000,
             fontWeight: 'bold'
           }}>
-            <div>Bs CKI. Vũ Thị Thuý Phương - 0349.648.326, Bs CKII Trịnh Thị Thu Hoài - BVĐK số 1 tỉnh Lào Cai</div>
+            <div>Bs Vũ Thị Thuý Phương, Bs Trịnh Thị Thu Hoài - BVĐK số 1 tỉnh Lào Cai</div>
           </div>
         </Content>
       </Layout>

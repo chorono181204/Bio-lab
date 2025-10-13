@@ -13,7 +13,7 @@ export interface Limit {
   cvRef?: number
   peerGroup?: number
   biasEqa?: number
-  biasMethod?: string
+  biasMethodId?: string
   createdBy?: string
   updatedBy?: string
   createdAt: Date
@@ -37,6 +37,10 @@ export interface Limit {
     deviceCode: string
     name: string
   }
+  biasMethod?: {
+    id: string
+    name: string
+  }
 }
 
 export interface CreateLimitInput {
@@ -53,7 +57,7 @@ export interface CreateLimitInput {
   cvRef?: number
   peerGroup?: number
   biasEqa?: number
-  biasMethod?: string
+  biasMethodId?: string
   qcName?: string
   exp?: Date | string
   method?: string
@@ -76,7 +80,7 @@ export interface UpdateLimitInput {
   cvRef?: number
   peerGroup?: number
   biasEqa?: number
-  biasMethod?: string
+  biasMethodId?: string
   updatedBy?: string
 }
 

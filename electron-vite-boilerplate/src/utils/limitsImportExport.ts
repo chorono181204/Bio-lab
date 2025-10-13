@@ -1,187 +1,129 @@
-import { exportToXlsx, importFromXlsx } from './xlsx'
+import dayjs from 'dayjs'
+import { importFromXlsx } from './xlsx'
+import { exportLimitsToExcel } from '../utils/export'
+import { limitService } from '../services/limit.service'
+import { analyteService } from '../services/analyte.service'
+import { qcLevelService } from '../services/qcLevel.service'
 
-type AnyRow = Record<string, any>
-
-export function buildXlsxSheetsByQc(rows: AnyRow[], selectedLot?: string) {
-  const byQc: Record<string, AnyRow[]> = {}
-  rows.forEach((r: any) => {
-    const qc = r.qc_level_name || r.qcLevel
-    byQc[qc] = byQc[qc] || []
-    byQc[qc].push(r)
-  })
-  const sheetOrder = ['TT','TEST','-2SD','+2SD','SD','Mean','LOT','EXP','Unit','TEA%','TEA-unit','%Mean','Tên QC','Phương pháp']
-  const sheets = Object.keys(byQc).map(qc => ({
-    name: qc,
-    rows: byQc[qc].map((r: any, idx: number) => ({
-      'TT': idx + 1,
-      'TEST': r.analyte_name || r.analyteName || r.analyte_id,
-      '-2SD': ((Number(r.mean)||0) - 2 * (Number(r.sd)||0)).toFixed(Number(r.decimals)||2),
-      '+2SD': ((Number(r.mean)||0) + 2 * (Number(r.sd)||0)).toFixed(Number(r.decimals)||2),
-      'SD': r.sd ?? '',
-      'Mean': r.mean ?? '',
-      'LOT': selectedLot || r.lot || '',
-      'EXP': r.exp || '',
-      'Unit': r.unit || '',
-      'TEA%': r.tea ?? '',
-      'TEA-unit': '%',
-      '%Mean': 0,
-      'Tên QC': r.qc_name || r.qcName || '',
-      'Phương pháp': r.method || ''
-    })),
-    headerOrder: sheetOrder
-  }))
-  return sheets
-}
-
-export async function exportLimitsByLotMachine(selectedLotId: string, selectedMachineId: string, selectedLot?: string) {
-  const rows = await (window as any).iqc?.limits?.listByLotMachine?.(selectedLotId, selectedMachineId)
-  const sheets = buildXlsxSheetsByQc(rows || [], selectedLot)
-  exportToXlsx(`qc_limits_${selectedLot || ''}.xlsx`, sheets)
-}
-
-// export by machine across all lots is removed per request
-
-export async function importLimitsFromXlsx(
-  file: File,
-  opts: {
-    selectedLotId?: string
-    selectedLot?: string
-    selectedQc?: string
-    selectedMachineId?: string
-    currentUser: string
+// Export limits using REST API and shared export utility
+async function fetchAllLimits(params: { lotId?: string; machineId?: string; search?: string }) {
+  const pageSize = 1000
+  let page = 1
+  const all: any[] = []
+  while (true) {
+    const res = await limitService.list({ ...params, page, pageSize })
+    const data = (res.data as any)
+    const items: any[] = data.items || []
+    const total: number = data.total ?? items.length
+    all.push(...items)
+    if (all.length >= total || items.length === 0) break
+    page += 1
   }
-) {
-  const { selectedLotId, selectedLot, selectedQc, selectedMachineId, currentUser } = opts
-  if (!selectedMachineId) throw new Error('Machine is required for import')
-  if (!selectedLotId) throw new Error('Lot is required for import')
+  return all
+}
 
-  
-  const analytes = await (window as any).iqc?.analytes?.list?.()
-  const normalize = (s: string) => String(s || '')
-    .normalize('NFD').replace(/\p{Diacritic}+/gu, '')
-    .trim().toLowerCase().replace(/\s+/g, '')
-  const analyteNameToCode: Record<string, string> = {}
-  const analyteNameToId: Record<string, string> = {}
-  ;(analytes || []).forEach((a: any) => { 
-    const key = normalize(a?.name)
-    if (key && a?.code) analyteNameToCode[key] = a.code
-    if (key && a?.id) analyteNameToId[key] = a.id
-  })
+export async function exportLimitsByLotMachine(lotId: string, machineId: string) {
+  const items = await fetchAllLimits({ lotId, machineId })
+  exportLimitsToExcel(items)
+}
 
+// Import limits from XLSX; Lot/Machine taken from context (header)
+export async function importLimitsFromXlsx(file: File, ctx: { lotId: string; machineId: string }) {
   const wb = await importFromXlsx(file)
+  const sheet = Object.values(wb)[0] || []
+  if (!Array.isArray(sheet) || sheet.length === 0) throw new Error('Không tìm thấy dữ liệu')
+
+  const [anRes, qcRes] = await Promise.all([
+    analyteService.list({ page: 1, pageSize: 10000 }),
+    qcLevelService.list({ page: 1, pageSize: 10000 })
+  ])
+  const analytes = (anRes.data as any).items || anRes.data || []
+  const qcLevels = (qcRes.data as any).items || qcRes.data || []
+  const nameToAnalyteId: Record<string, string> = {}
+  analytes.forEach((a: any) => { if (a?.name && a?.id) nameToAnalyteId[a.name.toLowerCase()] = a.id })
+  const nameToQcId: Record<string, string> = {}
+  qcLevels.forEach((q: any) => { if (q?.name && q?.id) nameToQcId[q.name.toLowerCase()] = q.id })
+
+  const result = { created: 0, skipped: 0, errors: [] as string[] }
   const inferDecimals = (val: any): number => {
     const s = String(val ?? '')
     const m = s.match(/\.(\d+)/)
     return m ? Math.min(6, m[1].length) : 2
   }
 
-  // Process each sheet (QC1, QC2, QC3)
-  for (const rawName of Object.keys(wb)) {
-    const qcLevel = String(rawName || '').trim().toUpperCase() // QC1/QC2/QC3
-    const rows = wb[rawName] || []
-    for (let i = 0; i < rows.length; i++) {
-      const r: any = rows[i]
-      
-      // Map columns as shown in the image
-      const testName = (r['TEST'] || '').toString()
-      const num = (v: any) => Number(String(v ?? '').replace(',', '.'))
-      const minus2SD = num(r['-2SD'])
-      const plus2SD = num(r['+2SD'])
-      const meanFromCol = num(r['Mean'])
-      const sdFromCol = num(r['SD'])
-      const unit = r['Unit'] || ''
-      const tea = r['TEA%'] !== null && r['TEA%'] !== undefined && r['TEA%'] !== '' ? num(r['TEA%']) : undefined
-      const exp = r['EXP'] ? String(r['EXP']) : undefined
-      const qcName = r['Tên QC'] ? String(r['Tên QC']) : undefined
-      const method = r['Phương pháp'] ? String(r['Phương pháp']) : undefined
-      
-      if (!testName) continue
+  for (let i = 0; i < (sheet as any[]).length; i++) {
+    const r = (sheet as any[])[i] as any
+    const analyteName = (r['Bộ XN'] || r['Tên xét nghiệm'] || '').toString().trim().toLowerCase()
+    const qcName = (r['Mức QC'] || '').toString().trim().toLowerCase()
+    const unit = (r['Đơn vị'] || '').toString().trim()
+    let decimals = Number(r['Số thập phân'] ?? 2)
+    const minus2 = Number(r['-2SD'])
+    const plus2 = Number(r['+2SD'])
+    let mean = Number(r['Giá trị trung bình'] ?? r['Mean'])
+    let sd = Number(r['Độ lệch chuẩn'] ?? r['SD'])
+    // Auto-derive Mean/SD from ±2SD when missing
+    if (!isFinite(mean) && isFinite(minus2) && isFinite(plus2)) {
+      mean = (minus2 + plus2) / 2
+    }
+    if (!isFinite(sd) && isFinite(minus2) && isFinite(plus2)) {
+      sd = (plus2 - minus2) / 4
+    }
+    // Auto-infer decimals if not provided
+    if (!isFinite(decimals)) {
+      decimals = Math.max(inferDecimals(r['Giá trị trung bình'] ?? r['Mean']), inferDecimals(r['Độ lệch chuẩn'] ?? r['SD']))
+    }
+    const tea = r['TEA'] !== undefined ? Number(r['TEA']) : undefined
+    const cvRef = r['CV Ref'] !== undefined ? Number(r['CV Ref']) : undefined
+    const peerGroup = r['Peer Group'] !== undefined ? Number(r['Peer Group']) : undefined
+    const biasEqa = r['Bias EQA'] !== undefined ? Number(r['Bias EQA']) : undefined
+    const exp = r['Ngày hết hạn'] ? dayjs(r['Ngày hết hạn'], 'DD/MM/YYYY').format('YYYY-MM-DD') : undefined
+    const method = (r['Phương pháp'] || '').toString().trim()
+    const note = (r['Ghi chú'] || '').toString().trim()
 
-      // Calculate mean and SD if not provided
-      let mean = meanFromCol
-      let sd = sdFromCol
-      
-      // If Mean is empty or 0, calculate from -2SD and +2SD
-      if (!meanFromCol && minus2SD && plus2SD) {
-        mean = (minus2SD + plus2SD) / 2
+    const analyteId = nameToAnalyteId[analyteName]
+    const qcLevelId = nameToQcId[qcName]
+    if (!analyteId || !qcLevelId || !isFinite(mean) || !isFinite(sd)) {
+      result.skipped++; result.errors.push(`Dòng ${i + 1}: thiếu dữ liệu bắt buộc`); continue
+    }
+    try {
+      // Upsert: nếu đã tồn tại giới hạn cho (lotId, machineId, qcLevelId, analyteId) thì update, ngược lại create
+      const existingResp = await limitService.list({
+        lotId: ctx.lotId,
+        machineId: ctx.machineId,
+        qcLevel: qcLevelId,
+        page: 1,
+        pageSize: 1000
+      })
+      const existingItems = (existingResp.data as any).items || []
+      const found = existingItems.find((it: any) => it.analyteId === analyteId)
+
+      const payload: any = {
+        analyteId,
+        lotId: ctx.lotId,
+        machineId: ctx.machineId,
+        qcLevelId,
+        unit,
+        decimals: isFinite(decimals) ? decimals : 2,
+        mean,
+        sd,
+        tea,
+        cvRef,
+        peerGroup,
+        biasEqa,
+        exp,
+        method,
+        note
       }
-      
-      // If SD is empty or 0, calculate from -2SD and +2SD
-      if (!sdFromCol && minus2SD && plus2SD) {
-        sd = (plus2SD - minus2SD) / 4 // SD = (upper - lower) / 4 for ±2SD range
-      }
 
-      // Find analyte by name (not code)
-      const key = normalize(testName)
-      const analyteCode = analyteNameToCode[key]
-      const analyteId = analyteNameToId[key]
-      if (!analyteCode || !analyteId) {
-        console.warn(`Analyte not found for name: ${testName}`)
-        continue
-      }
-
-      // Use selected lot and machine (don't read from LOT column)
-      const lotId = selectedLotId
-      const lotCode = selectedLot || ''
-
-      // Check if limit already exists
-      const existing = await (window as any).iqc?.limits?.listByContextAnalyte?.(
-        lotId, 
-        qcLevel, 
-        selectedMachineId, 
-        analyteCode
-      )
-
-      const decimals = Math.max(inferDecimals(r['Mean']), inferDecimals(r['SD']))
-
-      if (existing && existing[0]?.id) {
-        // Update existing limit
-        await (window as any).iqc?.limits?.update?.({
-          id: existing[0].id,
-          analyte_code: analyteCode,
-          lot_code: lotCode,
-          qc_level_name: qcLevel,
-          apply_to_machine: true,
-          machine_id: selectedMachineId,
-          unit,
-          decimals,
-          mean,
-          sd,
-          tea,
-          exp,
-          qc_name: qcName,
-          method,
-          updated_by: currentUser
-        })
+      if (found?.id) {
+        await limitService.update(found.id, { id: found.id, ...payload })
       } else {
-        // Create new limit
-        await (window as any).iqc?.limits?.create?.({
-          // Pass IDs as backend requires
-          analyte_id: analyteId,
-          lot_id: lotId,
-          qc_level_id: qcLevel, // QC IDs equal names (e.g., 'QC1')
-          apply_to_machine: true,
-          machine_id: selectedMachineId,
-          unit,
-          decimals,
-          mean,
-          sd,
-          tea,
-          exp,
-          qc_name: qcName,
-          method,
-          created_by: currentUser
-        })
+        await limitService.create(payload)
       }
+      result.created++
+    } catch (e: any) {
+      result.skipped++; result.errors.push(`Dòng ${i + 1}: ${e?.message || 'Lỗi tạo limit'}`)
     }
   }
-
-  // Return filtered data for current context
-  if (selectedLotId && selectedQc && selectedMachineId) {
-    const limits = await (window as any).iqc?.limits?.listByContext?.(selectedLotId, selectedQc, selectedMachineId)
-    return limits || []
-  }
-  return []
+  return result
 }
-
-

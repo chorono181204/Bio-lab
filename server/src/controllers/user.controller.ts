@@ -123,6 +123,58 @@ export async function update(req: Request, res: Response) {
   }
 }
 
+export async function updateProfile(req: Request, res: Response) {
+  try {
+    console.log('=== UPDATE PROFILE ===')
+    console.log('Body:', req.body)
+    console.log('Request user:', (req as any).user)
+    
+    const user = (req as any).user as { sub?: string; id?: string; fullName?: string; role?: string; departmentId?: string }
+    const userId = user?.sub || user?.id
+    const userFullName = user?.fullName
+    
+    console.log('Extracted userId:', userId)
+    console.log('User object:', user)
+    
+    if (!userId) {
+      console.log('❌ No userId found in request')
+      return res.status(401).json(fail('UNAUTHORIZED', 'User not authenticated'))
+    }
+    
+    // Validate userId is not 'profile' or other invalid values
+    if (userId === 'profile' || userId.length < 10) {
+      console.log('❌ Invalid userId:', userId)
+      return res.status(400).json(fail('INVALID_USER_ID', 'Invalid user ID'))
+    }
+    
+    const input = {
+      ...req.body,
+      id: userId,
+      updatedBy: userFullName,
+      departmentId: user.departmentId // Keep current department
+    }
+    
+    console.log('Updating profile for user:', userId)
+    console.log('Input:', input)
+    
+    const updatedUser = await updateUser(input)
+    console.log('Profile updated successfully:', updatedUser.id)
+    
+    // Remove password from response
+    const { password, ...safeUser } = updatedUser as any
+    return res.json(ok(safeUser))
+  } catch (e: any) {
+    console.error('Profile update error:', e)
+    if (e.code === 'P2025') {
+      return res.status(404).json(fail('NOT_FOUND', 'User not found'))
+    }
+    if (e.code === 'P2002') {
+      return res.status(400).json(fail('DUPLICATE_USERNAME', 'Username already exists'))
+    }
+    return res.status(500).json(fail('UPDATE_ERROR', `Failed to update profile: ${e.message}`))
+  }
+}
+
 export async function changeUserPassword(req: Request, res: Response) {
   try {
     const { id } = req.params
