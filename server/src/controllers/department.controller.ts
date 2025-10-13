@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { ok, fail } from '../libs/utils/response'
 import { parsePagination } from '../libs/utils/pagination'
+import { withDept } from '../middleware/scopeDepartment'
 import {
   listDepartments,
   getDepartmentById,
@@ -13,10 +14,12 @@ export async function list(req: Request, res: Response) {
   try {
     const pagination = parsePagination(req.query)
     const search = req.query.search as string
+    const where = withDept({}, req)
     
     const result = await listDepartments({
       ...pagination,
-      search
+      search,
+      departmentId: where.departmentId
     })
     
     return res.json(ok(result))

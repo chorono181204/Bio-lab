@@ -61,9 +61,30 @@ export const AppLayout: React.FC<Props> = ({ menuItems, children, onMenuClick, s
       >
         <div style={{ padding: '14px 16px', textAlign: 'center' }}>
           <img 
-            src="/logo.svg" 
+            src="./logo.svg" 
             alt="Logo" 
             style={{ height: 32, width: 'auto', marginBottom: 8 }}
+            onError={(e) => {
+              console.log('Logo load error, using fallback');
+              e.currentTarget.style.display = 'none';
+              // Show fallback
+              const fallback = document.createElement('div');
+              fallback.style.cssText = `
+                height: 32px; 
+                width: 32px; 
+                margin-bottom: 8px;
+                background: #1976d2;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-weight: bold;
+                font-size: 16px;
+              `;
+              fallback.textContent = 'QC';
+              e.currentTarget.parentNode?.insertBefore(fallback, e.currentTarget);
+            }}
           />
           <div style={{ 
             color: '#1976d2', 

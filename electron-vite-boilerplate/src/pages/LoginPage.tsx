@@ -26,7 +26,32 @@ const LoginPage: React.FC<{ onSuccess: (username: string, password: string) => P
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
       <Card style={{ width: 420, borderRadius: 12, boxShadow: '0 6px 20px rgba(25, 118, 210, 0.1)' }}>
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
-          <img src="/logo.svg" alt="Logo" style={{ height: 48 }} />
+          <img 
+            src="./logo.svg" 
+            alt="Logo" 
+            style={{ height: 48 }} 
+            onError={(e) => {
+              console.log('Login logo load error, using fallback');
+              e.currentTarget.style.display = 'none';
+              // Show fallback
+              const fallback = document.createElement('div');
+              fallback.style.cssText = `
+                height: 48px; 
+                width: 48px; 
+                margin: 0 auto 8px auto;
+                background: #1976d2;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-weight: bold;
+                font-size: 20px;
+              `;
+              fallback.textContent = 'QC';
+              e.currentTarget.parentNode?.insertBefore(fallback, e.currentTarget);
+            }}
+          />
           <div style={{ color: '#1976d2', fontWeight: 800, letterSpacing: 0.4, fontSize: 14, lineHeight: 1.2, marginTop: 8 }}>
             <div>BỆNH VIỆN ĐA KHOA SỐ 1</div>
             <div>TỈNH LÀO CAI</div>

@@ -13,12 +13,16 @@ export async function listDepartments(params: {
   page?: number
   pageSize?: number
   search?: string
+  departmentId?: string | null
 }) {
   const page = Math.max(1, Number(params.page) || 1)
   const pageSize = Math.min(100, Math.max(1, Number(params.pageSize) || 20))
   const skip = (page - 1) * pageSize
   
   const where: any = {}
+  if (params.departmentId) {
+    where.id = params.departmentId
+  }
   if (params.search) {
     where.OR = [
       { code: { contains: params.search } },

@@ -16,7 +16,7 @@ async function main() {
     const up = await prisma.department.upsert({
       where: { code: d.code },
       update: { name: d.name },
-      create: { code: d.code, name: d.name, isActive: true }
+      create: { code: d.code, name: d.name }
     })
     deptMap[d.code] = up.id
   }
@@ -60,11 +60,12 @@ async function main() {
   // QC Levels per department
   const qcNames = ['QC1', 'QC2', 'QC3']
   for (const deptCode of Object.keys(deptMap)) {
+    const deptId = deptMap[deptCode] as string
     for (const name of qcNames) {
       await prisma.qcLevel.upsert({
-        where: { name_departmentId: { name, departmentId: deptMap[deptCode] } as any },
+        where: { name_departmentId: { name, departmentId: deptId } as any },
         update: {},
-        create: { name, departmentId: deptMap[deptCode] }
+        create: { name, department: { connect: { id: deptId as string } } }
       })
     }
   }
@@ -79,11 +80,12 @@ async function main() {
     { code: '10x',  name: '10x',  severity: 'critical' as const, type: 'multiple' as const },
   ]
   for (const deptCode of Object.keys(deptMap)) {
+    const deptId = deptMap[deptCode] as string
     for (const r of rules) {
       await prisma.westgardRule.upsert({
-        where: { code_departmentId: { code: r.code, departmentId: deptMap[deptCode] } as any },
+        where: { code_departmentId: { code: r.code, departmentId: deptId } as any },
         update: { name: r.name, severity: r.severity, type: r.type },
-        create: { code: r.code, name: r.name, severity: r.severity, type: r.type, departmentId: deptMap[deptCode], isActive: true }
+        create: { code: r.code, name: r.name, severity: r.severity, type: r.type, department: { connect: { id: deptId as string } } }
       })
     }
   }

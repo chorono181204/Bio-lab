@@ -53,7 +53,7 @@ function useLoading() {
 .loading-card {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
 }
-.loading-logo { height: 56px; }
+.loading-logo { height: 48px; width: auto; }
 .loading-title { color: #1976d2; font-weight: 800; letter-spacing: .4px; font-size: 14px; line-height: 1.2; text-align:center }
 .loading-tag { color: #ffc107; font-size: 12px; font-style: italic; }
 .${className} {
@@ -71,11 +71,12 @@ function useLoading() {
   oDiv.className = 'app-loading-wrap'
   oDiv.innerHTML = `
     <div class="loading-card">
-      <img class="loading-logo" src="/logo.svg" alt="logo" />
+      <img class="loading-logo" src="./logo.svg" alt="logo" style="height: 48px; width: auto;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      <div class="loading-logo" style="height: 48px; width: 48px; background: #1976d2; border-radius: 50%; display: none; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 20px; margin: 0 auto;">QC</div>
       <div class="loading-title">
-        <div>BỆNH VIỆN ĐA KHOA SỐ 1</div>
-        <div>TỈNH LÀO CAI</div>
-        <div class="loading-tag">More than a hospital</div>
+        <div>HỆ THỐNG QUẢN LÝ QC</div>
+        <div>PHÒNG XÉT NGHIỆM</div>
+        <div class="loading-tag">Bệnh viện Đa khoa số 1 tỉnh Lào Cai</div>
       </div>
       <svg class="${className}" viewBox="25 25 50 50">
         <circle cx="50" cy="50" r="20" fill="none" stroke-width="4" stroke-miterlimit="10" />

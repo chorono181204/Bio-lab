@@ -2,14 +2,20 @@
  * @see https://www.electron.build/configuration/configuration
  */
 {
-  "appId": "YourAppID",
+  "appId": "com.biolab.iqc",
+  "productName": "Hệ thống QC Phòng xét nghiệm",
+  "icon": "build/icon.ico",
   "asar": true,
+  "forceCodeSigning": false,
+  "buildDependenciesFromSource": false,
   "directories": {
-    "output": "release/${version}"
+    "output": "release/${version}",
+    "buildResources": "build"
   },
   "files": [
     "dist-electron",
-    "dist"
+    "dist",
+    "public/logo.svg"
   ],
   "mac": {
     "artifactName": "${productName}_${version}.${ext}",
@@ -20,19 +26,27 @@
   "win": {
     "target": [
       {
-        "target": "nsis",
+        "target": "dir",
         "arch": [
-          "x64",
-          "ia32"
+          "x64"
         ]
       }
     ],
-    "artifactName": "IQC-Setup_${version}_${arch}.${ext}"
+    "artifactName": "IQC-App_${version}_${arch}",
+    "icon": "build/icon.ico",
+    "sign": false,
+    "verifyUpdateCodeSignature": false,
+    "requestedExecutionLevel": "asInvoker"
   },
   "nsis": {
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,
-    "deleteAppDataOnUninstall": false
+    "deleteAppDataOnUninstall": false,
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Hệ thống QC Phòng xét nghiệm"
   }
 }
