@@ -59,6 +59,37 @@ jspm_packages/
 dist/
 build/
 out/
+release/
+dist-electron/
+dist-electron-main/
+dist-electron-preload/
+
+# Electron build outputs
+*.exe
+*.dmg
+*.deb
+*.rpm
+*.AppImage
+*.snap
+
+# Electron Builder
+app-builder/
+electron-builder/
+
+# Project specific build outputs
+electron-vite-boilerplate/dist/
+electron-vite-boilerplate/dist-electron/
+electron-vite-boilerplate/release/
+electron-vite-boilerplate/build/
+
+# Server build
+server/dist/
+server/build/
+server/out/
+
+# Prisma
+prisma/migrations/
+prisma/data/
 
 # Database
 *.db
