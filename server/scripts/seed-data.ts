@@ -32,7 +32,7 @@ async function main() {
       position: 'Quản trị viên',
       role: 'admin',
       password: adminPasswordHash,
-      departmentId: deptMap['HEM'] || Object.values(deptMap)[0]
+      departmentId: (deptMap['HEM'] || Object.values(deptMap)[0]) as string
     }
   })
 
@@ -52,7 +52,7 @@ async function main() {
         position: 'Trưởng khoa',
         role: 'manager',
         password: hash,
-        departmentId: deptMap[m.dept]
+        departmentId: deptMap[m.dept] as string
       }
     })
   }

@@ -69,7 +69,7 @@ model Machine {
 
 model QcLevel {
   id           String        @id @default(cuid())
-  name         String        @unique
+  name         String
   departmentId String?
   createdBy    String?
   updatedBy    String?
@@ -81,6 +81,8 @@ model QcLevel {
   lots         Lot[]         @relation("Lot_QcLevel")
   westgardRules WestgardRule[] @relation("WestgardRule_QcLevel")
   violations   Violation[]
+
+  @@unique([name, departmentId])
 }
 
 model Entry {
@@ -171,7 +173,7 @@ model BiasMethod {
 
 model WestgardRule {
   id                String        @id @default(cuid())
-  code              String        @unique // e.g. wg_1_2s, wg_1_3s, wg_2_2s
+  code              String // e.g. wg_1_2s, wg_1_3s, wg_2_2s
   name              String
   severity          String // warning | error | critical
   description       String?
@@ -195,6 +197,8 @@ model WestgardRule {
   qcLevels          QcLevel[]     @relation("WestgardRule_QcLevel")
   violations        Violation[]
   department        Department?   @relation(fields: [departmentId], references: [id])
+
+  @@unique([code, departmentId])
 }
 
 
