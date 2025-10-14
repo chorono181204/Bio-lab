@@ -43,63 +43,75 @@ const QcSetupPage: React.FC = () => {
 
   // Note: Search is now handled by backend, no need for frontend filtering
 
-  const columns = useMemo(() => ([
-    { 
-      title: 'STT', 
-      width: 80, 
-      render: (_: any, __: QcLevel, index: number) => (pagination.page - 1) * pagination.pageSize + index + 1 
-    },
-    { 
-      title: 'Tên mức QC', 
-      dataIndex: 'name', 
-      width: 200, 
-      sorter: (a: QcLevel, b: QcLevel) => (a.name || '').localeCompare(b.name || ''),
-    },
-    { 
-      title: 'Khoa phòng', 
-      dataIndex: 'department', 
-      width: 150,
-      render: (department: any) => department?.name || '-',
-      sorter: (a: QcLevel, b: QcLevel) => (a.department?.name || '').localeCompare(b.department?.name || ''),
-    },
-    { 
-      title: 'Tạo bởi', 
-      dataIndex: 'createdBy', 
-      width: 140,
-      sorter: (a: QcLevel, b: QcLevel) => (a.createdBy || '').localeCompare(b.createdBy || ''),
-    },
-    { 
-      title: 'Cập nhật bởi', 
-      dataIndex: 'updatedBy', 
-      width: 160,
-      sorter: (a: QcLevel, b: QcLevel) => (a.updatedBy || '').localeCompare(b.updatedBy || ''),
-    },
-    {
-      title: 'Hành động', 
-      width: 160,
-      render: (_: any, record: QcLevel) => {
-        const isOwner = record.createdBy === currentUser
-        const isAdmin = currentRole === 'admin'
-        const canModify = isAdmin || isOwner
-        return (
-          <Space>
-            <Button size="small" type="primary" ghost icon={<EditOutlined />} onClick={() => onEdit(record)} disabled={!canModify}>Sửa</Button>
-            <Popconfirm
-              title="Xóa mức QC?"
-              description="Bạn có chắc chắn muốn xóa mức QC này?"
-              okText="Xóa"
-              cancelText="Hủy"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => onDelete(record.id)}
-              disabled={!canModify}
-            >
-              <Button size="small" danger ghost icon={<DeleteOutlined />} disabled={!canModify}>Xóa</Button>
-            </Popconfirm>
-          </Space>
-        )
-      }
+  const columns = useMemo(() => {
+    const baseColumns = [
+      { 
+        title: 'STT', 
+        width: 80, 
+        render: (_: any, __: QcLevel, index: number) => (pagination.page - 1) * pagination.pageSize + index + 1 
+      },
+      { 
+        title: 'Tên mức QC', 
+        dataIndex: 'name', 
+        width: 200, 
+        sorter: (a: QcLevel, b: QcLevel) => (a.name || '').localeCompare(b.name || ''),
+      },
+    ]
+
+    // Chỉ hiển thị cột "Khoa phòng" với admin
+    if (currentRole === 'admin') {
+      baseColumns.push({
+        title: 'Khoa phòng', 
+        dataIndex: 'department', 
+        width: 150,
+        render: (department: any) => department?.name || '-',
+        sorter: (a: QcLevel, b: QcLevel) => (a.department?.name || '').localeCompare(b.department?.name || ''),
+      })
     }
-  ]), [pagination.page, pagination.pageSize, currentUser, currentRole])
+
+    return baseColumns.concat([
+      { 
+        title: 'Tạo bởi', 
+        dataIndex: 'createdBy', 
+        width: 140,
+        sorter: (a: QcLevel, b: QcLevel) => (a.createdBy || '').localeCompare(b.createdBy || ''),
+      },
+      { 
+        title: 'Cập nhật bởi', 
+        dataIndex: 'updatedBy', 
+        width: 160,
+        sorter: (a: QcLevel, b: QcLevel) => (a.updatedBy || '').localeCompare(b.updatedBy || ''),
+      },
+      {
+        title: 'Hành động', 
+        width: 160,
+        render: (_: any, record: QcLevel) => {
+          const isOwner = record.createdBy === currentUser
+          const isAdmin = currentRole === 'admin'
+          const isManager = currentRole === 'manager'
+          // Cho phép admin, manager hoặc người tạo sửa
+          // Nếu không có createdBy (seed data), cho phép manager trở lên
+          const canModify = isAdmin || isManager || (isOwner && record.createdBy)
+          return (
+            <Space>
+              <Button size="small" type="primary" ghost icon={<EditOutlined />} onClick={() => onEdit(record)} disabled={!canModify}>Sửa</Button>
+              <Popconfirm
+                title="Xóa mức QC?"
+                description="Bạn có chắc chắn muốn xóa mức QC này?"
+                okText="Xóa"
+                cancelText="Hủy"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => onDelete(record.id)}
+                disabled={!canModify}
+              >
+                <Button size="small" danger ghost icon={<DeleteOutlined />} disabled={!canModify}>Xóa</Button>
+              </Popconfirm>
+            </Space>
+          )
+        }
+      }
+    ])
+  }, [pagination.page, pagination.pageSize, currentUser, currentRole])
 
   const onCreate = () => {
     setEditing(null)

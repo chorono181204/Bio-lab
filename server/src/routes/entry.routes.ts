@@ -1,10 +1,12 @@
 import { Router } from 'express'
 import * as entryController from '../controllers/entry.controller'
 import passport from 'passport'
+import { scopeByDepartment } from '../middleware/scopeDepartment'
 
 const router = Router()
 
 router.use(passport.authenticate('jwt', { session: false }))
+router.use(scopeByDepartment)
 
 // Entry routes
 router.get('/', entryController.list)

@@ -26,7 +26,17 @@ export async function listUsers(params: { page?: number; pageSize?: number; sear
   if (params.departmentId) where.departmentId = params.departmentId
   if (params.search) where.OR = [{ username: { contains: params.search } }, { fullName: { contains: params.search } }]
   const [items, total] = await Promise.all([
-    prisma.user.findMany({ where, skip, take: pageSize, orderBy: { createdAt: 'desc' } }),
+    prisma.user.findMany({ 
+      where, 
+      skip, 
+      take: pageSize, 
+      orderBy: { createdAt: 'desc' },
+      include: {
+        department: {
+          select: { id: true, name: true }
+        }
+      }
+    }),
     prisma.user.count({ where }),
   ])
   return { items, total, page, pageSize }

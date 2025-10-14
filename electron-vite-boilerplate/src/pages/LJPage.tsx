@@ -227,12 +227,19 @@ const LJPage: React.FC = () => {
   }, [selectedLotId])
 
   // Load analytes and QC levels for lot + machine
+  // Load analytes when lot + machine selected
   useEffect(() => {
     ;(async () => {
       try {
-        if (!selectedLotId || !selectedMachine) { setAnalyteOptions([]); setQcLevels([]); return }
+        if (!selectedLotId || !selectedMachine) { 
+          setAnalyteOptions([])
+          setQcLevels([])
+          setLimitsByLevel({})
+          setPointsByLevel({})
+          return 
+        }
         
-        // Load analytes to map code <-> id
+        // Load all analytes
         const analytesResponse = await analyteService.list({ page: 1, pageSize: 1000 })
         const analytes = analytesResponse.success && analytesResponse.data ? 
           ('items' in analytesResponse.data ? analytesResponse.data.items : analytesResponse.data) : []
@@ -243,17 +250,53 @@ const LJPage: React.FC = () => {
         setCodeToId(_codeToId)
         setIdToCode(_idToCode)
         
-        // Load QC levels from limits table for this lot + machine
+        // Show all analytes for selection
+        const opts = (analytes || []).map((a: any) => ({
+          value: a.id,
+          label: a.name || a.code || a.id
+        })).sort((a, b) => a.label.localeCompare(b.label, 'vi', { numeric: true }))
+        
+        console.log('[LJ] analyteOptions loaded:', opts)
+        setAnalyteOptions(opts)
+        
+        // Reset other states
+        setQcLevels([])
+        setLimitsByLevel({})
+        setPointsByLevel({})
+        
+      } catch (error) {
+        console.error('Error loading analytes:', error)
+        setAnalyteOptions([])
+        setQcLevels([])
+        setLimitsByLevel({})
+        setPointsByLevel({})
+      }
+    })()
+  }, [selectedLotId, selectedMachine])
+
+  // Load limits and QC levels when analyte is selected
+  useEffect(() => {
+    ;(async () => {
+      try {
+        if (!selectedLotId || !selectedMachine || !activeAnalyte) { 
+          setQcLevels([])
+          setLimitsByLevel({})
+          setPointsByLevel({})
+          return 
+        }
+        
+        // Load limits for this lot + machine + analyte
         const limitsResponse = await limitService.list({ 
           lotId: selectedLotId, 
-          machineId: selectedMachine, 
+          machineId: selectedMachine,
+          analyteId: activeAnalyte,
           page: 1, 
           pageSize: 1000 
         })
         
         if (limitsResponse.success && limitsResponse.data) {
           const limits = 'items' in limitsResponse.data ? limitsResponse.data.items : limitsResponse.data
-          console.log('[LJ] limits loaded:', limits)
+          console.log('[LJ] limits loaded for analyte:', activeAnalyte, limits)
           
           // Get unique QC levels from limits
           const qcLevelMap = new Map()
@@ -270,89 +313,29 @@ const LJPage: React.FC = () => {
           console.log('[LJ] qcLevels extracted:', levels)
           setQcLevels(levels)
           
-          // Get unique analytes from limits
-          const analyteSet = new Set<string>()
+          // Group limits by QC level
+          const limitsByLevel: Record<string, any> = {}
           limits.forEach((limit: any) => {
-            if (limit.analyteId) {
-              analyteSet.add(limit.analyteId)
+            if (limit.qcLevelId) {
+              limitsByLevel[limit.qcLevelId] = limit
             }
           })
-          
-          const opts = Array.from(analyteSet).map((id) => {
-            const a = (analytes || []).find((x: any) => x?.id === id)
-            const name = a?.name || a?.code || _idToCode[id] || id
-            return { value: id, label: name }
-          }).sort((a, b) => a.label.localeCompare(b.label, 'vi', { numeric: true }))
-          
-          console.log('[LJ] analyteOptions', opts)
-          setAnalyteOptions(opts)
-          if (opts[0]?.value) setActiveAnalyte(opts[0].value)
+          setLimitsByLevel(limitsByLevel)
+        } else {
+          setQcLevels([])
+          setLimitsByLevel({})
         }
         
-        setLimitsByLevel({})
         setPointsByLevel({})
       } catch (error) {
-        console.error('Error loading analytes and QC levels:', error)
-        setAnalyteOptions([])
+        console.error('Error loading limits and QC levels:', error)
         setQcLevels([])
         setLimitsByLevel({})
         setPointsByLevel({})
       }
     })()
-  }, [selectedLotId, selectedMachine])
+  }, [selectedLotId, selectedMachine, activeAnalyte])
 
-  // Recompute limits for ALL levels when active analyte changes
-  useEffect(() => {
-    ;(async () => {
-      if (!activeAnalyte || !selectedLotId || !selectedMachine) { setLimitsByLevel({}); return }
-      try {
-        const next: Record<string, Limits | null> = {}
-        for (const lvl of (qcLevels || [])) {
-          const response = await limitService.list({
-            lotId: selectedLotId,
-            machineId: selectedMachine,
-            qcLevel: lvl.id,
-            page: 1,
-            pageSize: 1000
-          })
-          
-          if (response.success && response.data) {
-            const limits = 'items' in response.data ? response.data.items : response.data
-            const candidates = limits.filter((l: any) => l?.analyteId === activeAnalyte)
-            const chosen = candidates.find((r: any) => 
-              r.machineId === selectedMachine && 
-              ((Number(r.mean)||0) !== 0 || (Number(r.sd)||0) !== 0)
-            ) || candidates[0] || null
-            
-            next[lvl.id] = chosen ? {
-              mean: Number(chosen.mean || 0),
-              sd: Number(chosen.sd || 0),
-              unit: chosen.unit || undefined,
-              cv: chosen.cv !== null && chosen.cv !== undefined ? Number(chosen.cv) : undefined,
-              cvRef: chosen.cvRef !== null && chosen.cvRef !== undefined ? Number(chosen.cvRef) : undefined,
-              exp: chosen.exp || undefined,
-              method: chosen.method || undefined
-            } : null
-            
-            console.log(`[LJ] Limit for ${lvl.name}:`, {
-              chosen: chosen,
-              cv: chosen?.cv,
-              mean: chosen?.mean,
-              sd: chosen?.sd,
-              rawResponse: response
-            })
-          } else {
-            next[lvl.id] = null
-          }
-        }
-        console.log('[LJ] limits.resolvedByLevel', next)
-        setLimitsByLevel(next)
-      } catch (error) {
-        console.error('Error loading limits:', error)
-        setLimitsByLevel({})
-      }
-    })()
-  }, [activeAnalyte, qcLevels, selectedLotId, selectedMachine])
 
   // Load entries for the active analyte for ALL QC levels
   useEffect(() => {

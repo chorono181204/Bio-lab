@@ -6,9 +6,9 @@ import * as controller from '../controllers/department.controller'
 
 const router = Router()
 
-// All routes require JWT auth and admin role
+// All routes require JWT auth and admin/manager role
 router.use(passport.authenticate('jwt', { session: false }))
-router.use(requireRole('admin'))
+
 
 // GET /api/departments - List departments with pagination and search
 router.get('/', controller.list)

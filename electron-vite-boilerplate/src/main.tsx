@@ -93,13 +93,22 @@ function render() {
           {isAuthenticated ? (
             <AppLayout
               menuItems={menuItems.filter(mi => {
-                if (!('children' in mi)) return true
-                const mapped = { ...mi, children: (mi as any).children.filter((c: any)=> {
-                  if (!c.role) return true
-                  const role = user?.role?.toLowerCase() || ''
-                  return role === 'admin' || role === 'manager'
-                }) }
-                return mapped
+                // Filter main menu items by role
+                if ((mi as any).role && (mi as any).role !== user?.role) {
+                  return false
+                }
+                
+                // Filter children if they exist
+                if ('children' in mi) {
+                  const mapped = { ...mi, children: (mi as any).children.filter((c: any)=> {
+                    if (!c.role) return true
+                    const role = user?.role?.toLowerCase() || ''
+                    return role === 'admin' || role === 'manager'
+                  }) }
+                  return mapped
+                }
+                
+                return true
               }) as any}
               onMenuClick={(k)=> { setActiveKey(k); window.location.hash = k }}
               selectedKey={activeKey}

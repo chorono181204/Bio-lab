@@ -1,12 +1,16 @@
 import { Router } from 'express'
 import passport from 'passport'
 import '../libs/auth/strategies/jwt.strategy'
+import { scopeByDepartment } from '../middleware/scopeDepartment'
 import * as controller from '../controllers/user.controller'
 
 const router = Router()
 
 // All routes require JWT auth only
 router.use(passport.authenticate('jwt', { session: false }))
+
+// Apply department scoping for non-admin users
+router.use(scopeByDepartment)
 
 // GET /api/users - List users with pagination and search
 router.get('/', controller.list)

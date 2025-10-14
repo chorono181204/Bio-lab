@@ -65,7 +65,11 @@ async function main() {
       await prisma.qcLevel.upsert({
         where: { name_departmentId: { name, departmentId: deptId } as any },
         update: {},
-        create: { name, department: { connect: { id: deptId as string } } }
+        create: { 
+          name, 
+          department: { connect: { id: deptId as string } },
+          createdBy: 'System Seeder'
+        }
       })
     }
   }
@@ -319,7 +323,6 @@ async function main() {
         },
         create: {
           ...ruleData,
-          departmentId: deptId,
           createdBy: 'System Seeder',
           department: { connect: { id: deptId as string } }
         }

@@ -1,10 +1,12 @@
 import { Router } from 'express'
 import * as westgardController from '../controllers/westgard.controller'
 import passport from 'passport'
+import { scopeByDepartment } from '../middleware/scopeDepartment'
 
 const router = Router()
 
 router.use(passport.authenticate('jwt', { session: false }))
+router.use(scopeByDepartment)
 
 // Westgard rule routes
 router.get('/', westgardController.list)

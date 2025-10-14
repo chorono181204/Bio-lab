@@ -58,13 +58,13 @@ export async function create(req: Request, res: Response) {
       return res.status(401).json(fail('UNAUTHORIZED', 'User not authenticated'))
     }
     
-    // Admin/Manager can create users in any department, regular users can only create in their department
-    const isAdminOrManager = user.role === 'admin' || user.role === 'manager'
+    // Admin can create users in any department, manager creates in their department
+    const isAdmin = user.role === 'admin'
     const input = {
       ...req.body,
       createdBy: userFullName,
-      // Only apply department scope for non-admin/manager users
-      ...(isAdminOrManager ? {} : { departmentId: user.departmentId })
+      // Admin: no restriction, Manager: auto-assign to their department
+      ...(isAdmin ? {} : { departmentId: user.departmentId })
     }
     
     const newUser = await createUser(input)

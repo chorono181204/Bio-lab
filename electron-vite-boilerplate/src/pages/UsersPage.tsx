@@ -58,96 +58,106 @@ const UsersPage: React.FC = () => {
   }, [apiData])
 
 
-  const columns = useMemo(() => ([
-    { 
-      title: 'STT', 
-      width: 80, 
-      render: (_: any, __: User, index: number) => (pagination.page - 1) * pagination.pageSize + index + 1 
-    },
-    { 
-      title: 'Tên đăng nhập', 
-      dataIndex: 'username', 
-      width: 150,
-      sorter: (a: User, b: User) => a.username.localeCompare(b.username),
-    },
-    { 
-      title: 'Họ tên', 
-      dataIndex: 'fullName', 
-      width: 200,
-      sorter: (a: User, b: User) => (a.fullName || '').localeCompare(b.fullName || ''),
-    },
-    { 
-      title: 'Chức vụ', 
-      dataIndex: 'position', 
-      width: 150,
-      sorter: (a: User, b: User) => ((a as any).position || '').localeCompare((b as any).position || ''),
-    },
-    { 
-      title: 'Khoa phòng', 
-      dataIndex: 'department', 
-      width: 150,
-      render: (dept: any) => dept?.name || '',
-      sorter: (a: User, b: User) => ((a as any).department?.name || '').localeCompare((b as any).department?.name || ''),
-    },
-    { 
-      title: 'Vai trò', 
-      dataIndex: 'role', 
-      width: 120,
-      render: (role: string) => {
-        const roleUi = roleMapDbToUi[role] || 'Người dùng'
-        const color = role === 'admin' ? 'red' : role === 'manager' ? 'blue' : 'green'
-        return <Tag color={color}>{roleUi}</Tag>
+  const columns = useMemo(() => {
+    const baseColumns = [
+      { 
+        title: 'STT', 
+        width: 80, 
+        render: (_: any, __: User, index: number) => (pagination.page - 1) * pagination.pageSize + index + 1 
       },
-      sorter: (a: User, b: User) => (a.role || '').localeCompare(b.role || ''),
-    },
-    { 
-      title: 'Tạo bởi', 
-      dataIndex: 'createdBy', 
-      width: 140,
-      sorter: (a: User, b: User) => ((a as any).createdBy || '').localeCompare((b as any).createdBy || ''),
-    },
-    { 
-      title: 'Cập nhật bởi', 
-      dataIndex: 'updatedBy', 
-      width: 160,
-      sorter: (a: User, b: User) => ((a as any).updatedBy || '').localeCompare((b as any).updatedBy || ''),
-    },
-    {
-      title: 'Hành động', 
-      width: 160,
-      render: (_: any, record: User) => {
-        const isOwner = (record as any).createdBy === currentUser
-        const isAdmin = currentRole === 'admin'
-        const canModify = isAdmin || isOwner
-        return (
-          <Space>
-            <Button 
-              size="small" 
-              type="primary" 
-              ghost 
-              icon={<EditOutlined />} 
-              onClick={() => onEdit(record)} 
-              disabled={!canModify}
-            >
-              Sửa
-            </Button>
-            <Popconfirm
-              title="Xóa người dùng?"
-              okText="Xóa"
-              cancelText="Hủy"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => onDelete(record.id)}
-              disabled={!canModify}
-            >
-              <Button size="small" danger ghost icon={<DeleteOutlined />} disabled={!canModify}>
-                Xóa
-              </Button>
-            </Popconfirm>
-          </Space>
-        )
-      }
+      { 
+        title: 'Tên đăng nhập', 
+        dataIndex: 'username', 
+        width: 150,
+        sorter: (a: User, b: User) => a.username.localeCompare(b.username),
+      },
+      { 
+        title: 'Họ tên', 
+        dataIndex: 'fullName', 
+        width: 200,
+        sorter: (a: User, b: User) => (a.fullName || '').localeCompare(b.fullName || ''),
+      },
+      { 
+        title: 'Chức vụ', 
+        dataIndex: 'position', 
+        width: 150,
+        sorter: (a: User, b: User) => ((a as any).position || '').localeCompare((b as any).position || ''),
+      },
+    ]
+
+    // Chỉ hiển thị cột "Khoa phòng" với admin
+    if (currentRole === 'admin') {
+      baseColumns.push({
+        title: 'Khoa phòng', 
+        dataIndex: 'department', 
+        width: 150,
+        render: (dept: any) => dept?.name || '',
+        sorter: (a: User, b: User) => ((a as any).department?.name || '').localeCompare((b as any).department?.name || ''),
+      })
     }
-  ]), [pagination.page, pagination.pageSize, currentUser, currentRole])
+
+    return baseColumns.concat([
+      { 
+        title: 'Vai trò', 
+        dataIndex: 'role', 
+        width: 120,
+        render: (role: string) => {
+          const roleUi = roleMapDbToUi[role] || 'Người dùng'
+          const color = role === 'admin' ? 'red' : role === 'manager' ? 'blue' : 'green'
+          return <Tag color={color}>{roleUi}</Tag>
+        },
+        sorter: (a: User, b: User) => (a.role || '').localeCompare(b.role || ''),
+      },
+      { 
+        title: 'Tạo bởi', 
+        dataIndex: 'createdBy', 
+        width: 140,
+        sorter: (a: User, b: User) => ((a as any).createdBy || '').localeCompare((b as any).createdBy || ''),
+      },
+      { 
+        title: 'Cập nhật bởi', 
+        dataIndex: 'updatedBy', 
+        width: 160,
+        sorter: (a: User, b: User) => ((a as any).updatedBy || '').localeCompare((b as any).updatedBy || ''),
+      },
+      {
+        title: 'Hành động', 
+        width: 160,
+        render: (_: any, record: User) => {
+          const isAdmin = currentRole === 'admin'
+          const isManager = currentRole === 'manager'
+          // Chỉ admin và manager mới có thể CRUD
+          const canModify = isAdmin || isManager
+          return (
+            <Space>
+              <Button 
+                size="small" 
+                type="primary" 
+                ghost 
+                icon={<EditOutlined />} 
+                onClick={() => onEdit(record)} 
+                disabled={!canModify}
+              >
+                Sửa
+              </Button>
+              <Popconfirm
+                title="Xóa người dùng?"
+                okText="Xóa"
+                cancelText="Hủy"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => onDelete(record.id)}
+                disabled={!canModify}
+              >
+                <Button size="small" danger ghost icon={<DeleteOutlined />} disabled={!canModify}>
+                  Xóa
+                </Button>
+              </Popconfirm>
+            </Space>
+          )
+        }
+      }
+    ])
+  }, [pagination.page, pagination.pageSize, currentUser, currentRole])
 
   const onCreate = () => {
     setEditing(null)
@@ -222,7 +232,9 @@ const UsersPage: React.FC = () => {
   return (
     <div>
       <Space style={{ marginBottom: 12, width: '100%', justifyContent: 'space-between' }}>
-        <Button type="primary" onClick={onCreate}>Thêm người dùng</Button>
+        {(currentRole === 'admin' || currentRole === 'manager') && (
+          <Button type="primary" onClick={onCreate}>Thêm người dùng</Button>
+        )}
         <Input
           placeholder="Tìm kiếm người dùng..."
           prefix={<SearchOutlined />}

@@ -14,12 +14,18 @@ export async function list(req: Request, res: Response) {
   try {
     const pagination = parsePagination(req.query)
     const search = req.query.search as string
-    const where = withDept({}, req)
+    const user = (req as any).user as { role?: string; departmentId?: string }
+    
+    let departmentId = null
+    // Admin xem tất cả, Manager chỉ xem khoa của mình
+    if (user.role === 'manager') {
+      departmentId = user.departmentId
+    }
     
     const result = await listDepartments({
       ...pagination,
       search,
-      departmentId: where.departmentId
+      departmentId
     })
     
     return res.json(ok(result))

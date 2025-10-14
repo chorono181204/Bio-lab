@@ -114,7 +114,9 @@ const DepartmentPage: React.FC = () => {
       title: 'Hành động', 
       width: 160,
       render: (_: any, record: Department) => {
-        const canModify = true
+        const isAdmin = currentRole === 'admin'
+        const isManager = currentRole === 'manager'
+        const canModify = isAdmin || isManager
         return (
           <Space>
             <Button 
@@ -214,7 +216,9 @@ const DepartmentPage: React.FC = () => {
     <div>
       <Space style={{ marginBottom: 12, width: '100%', justifyContent: 'space-between' }}>
         <Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={onCreate}>Thêm khoa</Button>
+          {(currentRole === 'admin' || currentRole === 'manager') && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={onCreate}>Thêm khoa</Button>
+          )}
           <Button onClick={async () => {
             try {
               message.loading('Đang xuất file...', 0)
