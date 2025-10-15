@@ -420,10 +420,10 @@ const LimitsPage: React.FC = () => {
     
     // Find the correct IDs for the form values
     const analyteOption = analyteOptions.find(a => a.value === record.analyte?.id || record.analyteId)
-    const lotOption = lotOptions.find(l => (l.value === (record.lot?.code || record.lot)))
-    const qcLevelIdFromRecord = (record.qcLevelId || record.qcLevel?.id) as string | undefined
+    const lotOption = lotOptions.find(l => (l.value === ((record.lot as any)?.code || record.lot)))
+    const qcLevelIdFromRecord = (record.qcLevelId || (record.qcLevel as any)?.id) as string | undefined
     const qcLevelOption = qcLevelOptions.find(q => q.value === qcLevelIdFromRecord)
-    const machineOption = machineOptions.find(m => m.value === record.machine?.id || record.machineId)
+    const machineOption = machineOptions.find(m => m.value === (record.machine as any)?.id || record.machineId)
     
     console.log('Found options:', {
       analyteOption,
@@ -437,7 +437,7 @@ const LimitsPage: React.FC = () => {
       console.log('Lot options not loaded yet, waiting...')
       // Wait a bit for lotOptions to load
       await new Promise(resolve => setTimeout(resolve, 100))
-      const updatedLotOption = lotOptions.find(l => l.value === record.lot?.code || record.lot)
+      const updatedLotOption = lotOptions.find(l => l.value === (record.lot as any)?.code || record.lot)
       if (updatedLotOption?.id) {
         console.log('Found lot option after wait:', updatedLotOption)
         setSelectedLotId(updatedLotOption.id)
@@ -449,7 +449,7 @@ const LimitsPage: React.FC = () => {
     
     const formValues = {
       analyteId: analyteOption?.value || record.analyteId,
-      lot: lotOption?.value || record.lot?.code || record.lot,
+      lot: lotOption?.value || (record.lot as any)?.code || record.lot,
       qcLevel: qcLevelOption?.value || qcLevelIdFromRecord,
       machineId: machineOption?.value || record.machineId,
       unit: record.unit,
@@ -464,7 +464,7 @@ const LimitsPage: React.FC = () => {
       exp: record.exp ? dayjs(record.exp) : undefined,
       method: record.method,
       note: record.note,
-      biasMethod: record.biasMethod?.id || record.biasMethod,
+      biasMethod: (record.biasMethod as any)?.id || record.biasMethod,
     }
     
     console.log('Setting form values:', formValues)
@@ -495,54 +495,103 @@ const LimitsPage: React.FC = () => {
       // Find IDs for the selected values
       const selectedLot = lotOptions.find(lot => lot.value === values.lot)
       const selectedAnalyte = analyteOptions.find(analyte => analyte.value === values.analyteId)
-      const selectedQcLevel = qcLevelOptions.find(qc => qc.value === values.qcLevel)
-      const selectedMachine = machineOptions.find(machine => machine.value === values.machineId)
       
-      if (!selectedMachine?.value && !values.machineId) {
-        message.error('Vui lòng chọn máy xét nghiệm')
+      // Handle multi-select for machines and QC levels
+      const selectedMachineIds = Array.isArray(values.machineId) ? values.machineId : [values.machineId]
+      const selectedQcLevelIds = Array.isArray(values.qcLevel) ? values.qcLevel : [values.qcLevel]
+      
+      if (!selectedMachineIds.length || selectedMachineIds.every(id => !id)) {
+        message.error('Vui lòng chọn ít nhất một máy xét nghiệm')
+        return
+      }
+      
+      if (!selectedQcLevelIds.length || selectedQcLevelIds.every(id => !id)) {
+        message.error('Vui lòng chọn ít nhất một mức QC')
         return
       }
 
-      // Map QC level name to ID if needed
-      const qcLevelId = selectedQcLevel?.value || 
-        qcLevelOptions.find(qc => qc.label === values.qcLevel)?.value || 
-        values.qcLevel
-
-      const payload = {
-        analyteId: selectedAnalyte?.value || values.analyteId,
-        lotId: selectedLot?.id || values.lot,
-        qcLevelId: qcLevelId,
-        machineId: selectedMachine?.value || values.machineId,
-        unit: values.unit,
-        decimals: values.decimals || 2,
-        mean: values.mean,
-        sd: values.sd,
-        cv: values.cv,
-        tea: values.tea,
-        cvRef: values.cvRef,
-        peerGroup: values.peerGroup,
-        biasEqa: values.biasEqa,
-        exp: values.exp ? (values.exp as any).format('YYYY-MM-DD') : undefined,
-        method: values.method,
-        note: values.note,
-        biasMethodId: values.biasMethod,
-      }
-      
-      console.log('=== FRONTEND PAYLOAD DEBUG ===')
-      console.log('selectedQcLevel:', selectedQcLevel)
-      console.log('values.qcLevel:', values.qcLevel)
-      console.log('qcLevelId (mapped):', qcLevelId)
-      console.log('qcLevelId in payload:', payload.qcLevelId)
-      console.log('qcLevelOptions:', qcLevelOptions)
-      console.log('selectedQcLevel?.value:', selectedQcLevel?.value)
-      console.log('================================')
-
       if (editing) {
+        // For editing, only update the single record (use first selected values)
+        const qcLevelId = selectedQcLevelIds[0]
+        const machineId = selectedMachineIds[0]
+        
+        const payload = {
+          analyteId: selectedAnalyte?.value || values.analyteId,
+          lotId: selectedLot?.id || values.lot,
+          qcLevelId: qcLevelId,
+          machineId: machineId,
+          unit: values.unit,
+          decimals: values.decimals || 2,
+          mean: values.mean,
+          sd: values.sd,
+          cv: values.cv,
+          tea: values.tea,
+          cvRef: values.cvRef,
+          peerGroup: values.peerGroup,
+          biasEqa: values.biasEqa,
+          exp: values.exp ? (values.exp as any).format('YYYY-MM-DD') : undefined,
+          method: values.method,
+          note: values.note,
+          biasMethodId: values.biasMethod,
+        }
+        
         await limitService.update(editing.id, { ...payload, id: editing.id })
         message.success('Cập nhật thiết lập thành công')
       } else {
-        await limitService.create(payload)
-        message.success('Tạo thiết lập thành công')
+        // For creating, create multiple records for each machine + QC level combination
+        const createPromises = []
+        const seenCombinations = new Set<string>()
+        
+        for (const machineId of selectedMachineIds) {
+          if (!machineId) continue
+          
+          for (const qcLevelId of selectedQcLevelIds) {
+            if (!qcLevelId) continue
+            
+            // Create unique key to avoid duplicates
+            const combinationKey = `${machineId}-${qcLevelId}`
+            if (seenCombinations.has(combinationKey)) {
+              console.log(`Skipping duplicate combination: ${combinationKey}`)
+              continue
+            }
+            seenCombinations.add(combinationKey)
+            
+            const payload = {
+              analyteId: selectedAnalyte?.value || values.analyteId,
+              lotId: selectedLot?.id || values.lot,
+              qcLevelId: qcLevelId,
+              machineId: machineId,
+              unit: values.unit,
+              decimals: values.decimals || 2,
+              mean: values.mean,
+              sd: values.sd,
+              cv: values.cv,
+              tea: values.tea,
+              cvRef: values.cvRef,
+              peerGroup: values.peerGroup,
+              biasEqa: values.biasEqa,
+              exp: values.exp ? (values.exp as any).format('YYYY-MM-DD') : undefined,
+              method: values.method,
+              note: values.note,
+              biasMethodId: values.biasMethod,
+            }
+            
+            createPromises.push(limitService.create(payload))
+          }
+        }
+        
+        // Execute all create operations
+        const results = await Promise.all(createPromises)
+        const successCount = results.filter(r => r.success).length
+        const totalCount = createPromises.length
+        
+        if (successCount === totalCount) {
+          message.success(`Tạo/cập nhật thành công ${successCount} thiết lập QC`)
+        } else if (successCount > 0) {
+          message.warning(`Tạo/cập nhật thành công ${successCount}/${totalCount} thiết lập QC`)
+        } else {
+          message.error('Không thể tạo thiết lập QC nào')
+        }
       }
       
       setOpen(false)
@@ -560,7 +609,7 @@ const LimitsPage: React.FC = () => {
         message.warning('Chọn lô và máy trước khi xuất')
         return
       }
-      await exportLimitsByLotMachine(selectedLotId, selectedMachineFilter, selectedLot)
+      await exportLimitsByLotMachine(selectedLotId, selectedMachineFilter)
     } catch (e) {
       console.error('Export by lot error', e)
       message.error('Xuất theo lô thất bại')

@@ -1,12 +1,13 @@
 import React from 'react'
 import { DatePicker, Form, Input, InputNumber, Space, Select } from 'antd'
 import { BiasMethodManager } from '../bias/BiasMethodManager'
-import { lotService, machineService } from '../../services'
+import { lotService, machineService, analyteService } from '../../services'
 
 export type QCLimitFormValues = {
   analyteId: string
-  qcLevel: string
+  qcLevel: string | string[]  // Support both single and multi-select
   lot: string
+  machineId: string | string[]  // Support both single and multi-select
   unit: string
   decimals: number
   mean: number
@@ -123,6 +124,27 @@ const QCLimitForm: React.FC<Props> = ({ form, analyteOptions, lotOptions, machin
     }
   }, [mean, sd, calculatedCV, cv, form])
 
+  // Autofill when analyte selected: unit, decimals, possibly method
+  React.useEffect(() => {
+    const analyteId = form.getFieldValue('analyteId')
+    if (!analyteId) return
+    ;(async () => {
+      try {
+        const res = await analyteService.getById(analyteId as string)
+        const a = (res as any)?.data || (res as any)
+        if (a) {
+          const patch: any = {}
+          if (a.unit && !form.getFieldValue('unit')) patch.unit = a.unit
+          if (typeof a.decimals === 'number' && form.getFieldValue('decimals') == null) patch.decimals = a.decimals
+          if (a.method && !form.getFieldValue('method')) patch.method = a.method
+          if (Object.keys(patch).length) form.setFieldsValue(patch)
+        }
+      } catch (e) {
+        // ignore
+      }
+    })()
+  }, [form, form.getFieldValue('analyteId')])
+
   return (
     <Form form={form} layout="vertical">
       {/* Thông tin cơ bản */}
@@ -130,7 +152,21 @@ const QCLimitForm: React.FC<Props> = ({ form, analyteOptions, lotOptions, machin
         <h4 style={{ margin: '0 0 12px 0', color: '#1677ff' }}>Thông tin cơ bản</h4>
         <Space size={12} style={{ display: 'flex' }} wrap>
           <Form.Item name="analyteId" label="Bộ XN" rules={[{ required: true, message: 'Vui lòng chọn bộ xét nghiệm' }]} style={{ width: 200 }}>
-            <Select placeholder="Chọn bộ xét nghiệm" options={analyteOptions} />
+            <Select 
+              placeholder="Chọn bộ xét nghiệm" 
+              options={analyteOptions}
+              onChange={async (val) => {
+                try {
+                  const res = await analyteService.getById(val as string)
+                  const a: any = (res as any)?.data || (res as any)
+                  const patch: any = {}
+                  if (a?.unit) patch.unit = a.unit
+                  if (typeof a?.decimals === 'number') patch.decimals = a.decimals
+                  if (a?.method) patch.method = a.method
+                  if (Object.keys(patch).length) form.setFieldsValue(patch)
+                } catch {}
+              }}
+            />
           </Form.Item>
           <Form.Item name="lot" label="Lô" rules={[{ required: true, message: 'Vui lòng chọn lô' }]} style={{ width: 200 }}>
             <Select placeholder="Chọn lô" options={lotOptions} />
@@ -140,6 +176,7 @@ const QCLimitForm: React.FC<Props> = ({ form, analyteOptions, lotOptions, machin
               placeholder="Chọn máy" 
               options={filteredMachineOptions} 
               allowClear
+              mode="multiple"
               onDropdownVisibleChange={(open) => {
                 console.log('=== MACHINE DROPDOWN DEBUG ===')
                 console.log('Dropdown open:', open)
@@ -150,7 +187,11 @@ const QCLimitForm: React.FC<Props> = ({ form, analyteOptions, lotOptions, machin
             />
           </Form.Item>
           <Form.Item name="qcLevel" label="Mức QC" rules={[{ required: true, message: 'Vui lòng chọn mức QC' }]} style={{ width: 200 }}>
-            <Select placeholder="Chọn mức QC" options={qcLevelOptions} />
+            <Select 
+              placeholder="Chọn mức QC" 
+              options={qcLevelOptions} 
+              mode="multiple"
+            />
           </Form.Item>
         </Space>
       </div>

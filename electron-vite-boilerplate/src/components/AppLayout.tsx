@@ -162,9 +162,9 @@ export const AppLayout: React.FC<Props> = ({ menuItems, children, onMenuClick, s
             textAlign: 'center',
             lineHeight: 1.3,
             zIndex: 1000,
-            fontWeight: 'bold'
+            fontWeight: 'bold'  
           }}>
-            <div>Bs Vũ Thị Thuý Phương, Bs Trịnh Thị Thu Hoài - BVĐK số 1 tỉnh Lào Cai</div>
+            <div>CKI Vũ Thị Thuý Phương, Bs CKII Trịnh Thị Thu Hoài - BVĐK số 1 tỉnh Lào Cai</div>
           </div>
         </Content>
       </Layout>

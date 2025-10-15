@@ -3,6 +3,8 @@ import { Button, DatePicker, Select, Space, Typography, Card, message } from 'an
 import LJChartComp, { Point, Limits } from '../components/charts/LJChart'
 import dayjs from 'dayjs'
 import { lotService, machineService, analyteService, limitService, entryService } from '../services'
+import { westgardService } from '../services/westgard.service'
+import { evaluateWithRules } from '../utils/westgard-dynamic'
 import { exportLJToExcelWithCharts, svgToPngDataUrl, exportLJToExcelFromTemplate } from '../utils/exportLJ'
 
 // types moved to component
@@ -128,10 +130,12 @@ const LJPage: React.FC = () => {
   const [qcLevels, setQcLevels] = useState<Array<{ id: string; name: string }>>([])
   const [limitsByLevel, setLimitsByLevel] = useState<Record<string, Limits | null>>({})
   const [pointsByLevel, setPointsByLevel] = useState<Record<string, Point[]>>({})
+  const [contributorsByLevel, setContributorsByLevel] = useState<Record<string, string[]>>({})
   const qc1Ref = useRef<SVGSVGElement|null>(null)
   const qc2Ref = useRef<SVGSVGElement|null>(null)
   const [activeTab, setActiveTab] = useState(0)
   const [noteText, setNoteText] = useState('')
+  const [westgardRules, setWestgardRules] = useState<Array<{ code: string; severity: 'warning'|'error'|'critical'; params: any }>>([])
 
   // Tạo danh sách charts động từ tất cả QC levels (ID + tên thật)
   const charts = React.useMemo(() => {
@@ -147,6 +151,14 @@ const LJPage: React.FC = () => {
     charts
   }
 
+  const allContributors = React.useMemo(() => {
+    const all: string[] = []
+    Object.values(contributorsByLevel || {}).forEach(list => {
+      (list || []).forEach(name => { if (name && !all.includes(name)) all.push(name) })
+    })
+    return all
+  }, [contributorsByLevel])
+
   // Initialize from context if coming from EntryPage
   useEffect(() => {
     try {
@@ -159,6 +171,37 @@ const LJPage: React.FC = () => {
         if (ctx?.range && ctx.range[0] && ctx.range[1]) setRange([dayjs(ctx.range[0]), dayjs(ctx.range[1])] as any)
       }
     } catch {}
+  }, [])
+
+  // Load Westgard rules
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await westgardService.list({ page: 1, pageSize: 1000 })
+        if (response.success && response.data && 'items' in response.data) {
+          const rules = response.data.items.map((rule: any) => ({
+            code: rule.code || rule.name,
+            severity: rule.severity,
+            params: {
+              type: rule.code || rule.name,
+              window_size: rule.windowSize,
+              threshold_sd: rule.thresholdSd,
+              consecutive_points: rule.consecutivePoints,
+              same_side: rule.sameSide,
+              opposite_sides: rule.oppositeSides,
+              sum_abs_z_gt: rule.sumAbsZGt,
+              expression: rule.expression
+            }
+          }))
+          setWestgardRules(rules)
+        } else {
+          setWestgardRules([])
+        }
+      } catch (e) {
+        console.error('Load Westgard rules failed:', e)
+        setWestgardRules([])
+      }
+    })()
   }, [])
 
   // Load current user info from localStorage (được set sau khi đăng nhập)
@@ -309,8 +352,15 @@ const LJPage: React.FC = () => {
             }
           })
           
-          const levels = Array.from(qcLevelMap.values())
-          console.log('[LJ] qcLevels extracted:', levels)
+          let levels = Array.from(qcLevelMap.values())
+          // Sort QC levels naturally so QC1, QC2, QC3 ... (top-down)
+          levels = levels.sort((a: any, b: any) => {
+            const na = parseInt(String(a?.name || '').replace(/\D+/g, '')) || 0
+            const nb = parseInt(String(b?.name || '').replace(/\D+/g, '')) || 0
+            if (na !== nb) return na - nb
+            return String(a?.name || '').localeCompare(String(b?.name || ''), 'vi', { numeric: true })
+          })
+          console.log('[LJ] qcLevels extracted (sorted):', levels)
           setQcLevels(levels)
           
           // Group limits by QC level
@@ -353,12 +403,17 @@ const LJPage: React.FC = () => {
           // Do not aggregate; plot every result as its own point
           return (rows || [])
             .filter(r => r.analyteId === activeAnalyte)
-            .map(r => ({ date: r.entryDate, value: Number(r.value) }))
-            .filter(p => withinRange(p.date))
+            .map(r => ({ 
+              // Prefer domain date field; fall back to possible aliases
+              date: (r.entryDate || r.date || r.createdAt), 
+              value: Number(r.value) 
+            }))
+            .filter(p => p.date && withinRange(p.date))
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
         }
         
         const nextPoints: Record<string, Point[]> = {}
+        const nextContributors: Record<string, string[]> = {}
         for (const lvl of (qcLevels || [])) {
           const response = await entryService.list({
             lotId: selectedLotId,
@@ -373,15 +428,27 @@ const LJPage: React.FC = () => {
             const entries = 'items' in response.data ? response.data.items : response.data
             console.log('[LJ] entriesByLevel', { level: lvl, entries })
             nextPoints[lvl.id] = map(entries || [])
+            // Build unique contributor names from createdBy/updatedBy within range
+            const namesSet = new Set<string>()
+            ;(entries || []).forEach((e: any) => {
+              const d = (e.entryDate || e.date || e.createdAt)
+              if (!d || !withinRange(d)) return
+              if (e.createdBy && typeof e.createdBy === 'string') namesSet.add(e.createdBy)
+              if (e.updatedBy && typeof e.updatedBy === 'string') namesSet.add(e.updatedBy)
+            })
+            nextContributors[lvl.id] = Array.from(namesSet)
           } else {
             nextPoints[lvl.id] = []
+            nextContributors[lvl.id] = []
           }
         }
         console.log('[LJ] pointsByLevel', nextPoints)
         setPointsByLevel(nextPoints)
+        setContributorsByLevel(nextContributors)
       } catch (error) {
         console.error('Error loading entries:', error)
         setPointsByLevel({})
+        setContributorsByLevel({})
       }
     })()
   }, [selectedLotId, selectedMachine, activeAnalyte, range, qcLevels])
@@ -431,6 +498,27 @@ const LJPage: React.FC = () => {
               const lim = limitsByLevel[lvl.id] || { mean: 0, sd: 0, cv: undefined as any, cvRef: undefined as any, unit: undefined as any, exp: undefined as any, method: undefined as any }
               return { qc: lvl.name, mean: lim.mean, sd: lim.sd, cv: lim.cv, cvRef: lim.cvRef, unit: lim.unit, exp: lim.exp ? dayjs(lim.exp).format('DD/MM/YYYY') : undefined, method: lim.method }
             })
+            const contributorsForExport = (qcLevels || []).map(lvl => ({
+              qc: lvl.name,
+              members: (contributorsByLevel[lvl.id] || []).join(', ')
+            }))
+            // Build violation rows per QC
+            const violationsForExport: Array<{ qc: string; date: string; value: number; rules: string }> = []
+            for (const lvl of (qcLevels || [])) {
+              const pts = pointsByLevel[lvl.id] || []
+              const lim = limitsByLevel[lvl.id]
+              const sd = Number(lim?.sd || 0)
+              const mean = Number(lim?.mean || 0)
+              if (!sd) continue
+              const values: number[] = []
+              pts.forEach(p => {
+                values.push(Number(p.value))
+                const z = Math.abs((Number(p.value) - mean) / sd)
+                if (z >= 2) {
+                  violationsForExport.push({ qc: lvl.name, date: dayjs(p.date).format('DD/MM/YYYY'), value: Number(p.value), rules: z >= 3 ? '>=3SD' : '>=2SD' })
+                }
+              })
+            }
             await exportLJToExcelWithCharts({
               analyteName,
               lotCode: selectedLot,
@@ -440,8 +528,10 @@ const LJPage: React.FC = () => {
               charts: chartsImgs,
               parameters: params,
               exportedBy: `${userFullName || ''}${userPosition ? ` (${userPosition})` : ''}`,
+              contributors: contributorsForExport,
+              violations: violationsForExport,
               filename: `lj_${analyteName}_${Date.now()}.xlsx`
-            })
+            } as any)
             message.success({ content: 'Đã lưu file Excel kèm biểu đồ', key: 'lj-save' })
           } catch (e) {
             console.error('Export LJ to Excel error:', e)
@@ -503,30 +593,65 @@ const LJPage: React.FC = () => {
               })
               return order.map(k => map[k])
             }
-            const filterCorrect = (pts: Point[]): Point[] => {
+            const filterViolations = (pts: Point[]): Point[] => {
               const sd = Number(chart.limits.sd) || 0
-              if (!sd) return pts
+              if (!sd || !westgardRules.length) return []
               const mean = Number(chart.limits.mean) || 0
-              return pts.filter(p => Math.abs((p.value - mean) / sd) < 2)
+              const kept: Point[] = []
+              const values: number[] = []
+              pts.forEach(p => {
+                values.push(Number(p.value))
+                const r = (window as any).undefinedEvaluateWithRules
+                // We will evaluate inline below to avoid extra imports
+              })
+              return kept
             }
             const displayPoints = activeTab === 1
               ? collapseLastPerDay(chart.points)
               : activeTab === 2
-                ? filterCorrect(chart.points)
+                ? (() => {
+                    const sd = Number(chart.limits.sd) || 0
+                    const mean = Number(chart.limits.mean) || 0
+                    if (!sd) return chart.points
+                    const kept: Point[] = []
+                    const values: number[] = []
+                    for (const p of chart.points) {
+                      values.push(Number(p.value))
+                      if (westgardRules && westgardRules.length) {
+                        const res = evaluateWithRules(values, mean, sd, westgardRules)
+                        // Biểu đồ 3: chỉ giữ các điểm KHÔNG lỗi (pass)
+                        if (res.level === 'pass') kept.push(p)
+                      } else {
+                        const z = Math.abs((Number(p.value) - mean) / sd)
+                        // Fallback: pass nếu |z| < 2SD
+                        if (z < 2) kept.push(p)
+                      }
+                    }
+                    return kept
+                  })()
                 : chart.points
+            const names = contributorsByLevel[chart.qcLevelId] || []
             return (
-              <LJChartComp 
-                key={chart.qcLevelId}
-                title={`${chart.qcLevelName}`} 
-                points={displayPoints} 
-                limits={chart.limits} 
-                onRef={(el) => {
-                  if (index === 0) qc1Ref.current = el
-                  else if (index === 1) qc2Ref.current = el
-                }} 
-              />
+              <div key={chart.qcLevelId}>
+                <LJChartComp 
+                  title={`${chart.qcLevelName}`} 
+                  points={displayPoints} 
+                  limits={chart.limits} 
+                  westgardRules={westgardRules}
+                  onRef={(el) => {
+                    if (index === 0) qc1Ref.current = el
+                    else if (index === 1) qc2Ref.current = el
+                  }} 
+                />
+                {names.length > 0 && (
+                  <div style={{ margin: '-6px 0 10px 54px', color: '#595959', fontSize: 12 }}>
+                    <span style={{ color: '#8c8c8c' }}>Thành viên:</span> {names.join(', ')}
+                  </div>
+                )}
+              </div>
             )
           })}
+          
           <Card size="small" style={{ marginTop: 12 }}>
             <div style={{ height: 120, display: 'flex', alignItems: 'center', padding: 8 }}>
               <span style={{ minWidth: 80, color: '#888' }}>Nhận xét</span>

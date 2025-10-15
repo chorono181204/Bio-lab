@@ -16,6 +16,8 @@ export async function exportLJToExcelWithCharts(opts: {
   charts: LjChartImage[]
   parameters?: Array<{ qc: string; mean: number; sd: number; cv?: number; cvRef?: number; unit?: string; exp?: string; method?: string }>
   exportedBy?: string
+  contributors?: Array<{ qc: string; members: string }>
+  violations?: Array<{ qc: string; date: string; value: number; rules: string }>
 }) {
   try {
     const XlsxPopulate = (await import('xlsx-populate/browser/xlsx-populate')).default
@@ -71,6 +73,36 @@ export async function exportLJToExcelWithCharts(opts: {
     })
   }
 
+  // Contributors per QC
+  if (opts.contributors && opts.contributors.length) {
+    const wsContrib = wb.addSheet('Thành viên')
+    wsContrib.cell('A1').value('Mức QC')
+    wsContrib.cell('B1').value('Thành viên')
+    let r = 2
+    opts.contributors.forEach(c => {
+      wsContrib.row(r).cell(1).value(c.qc)
+      wsContrib.row(r).cell(2).value(c.members || '')
+      r += 1
+    })
+  }
+
+  // Violations sheet
+  if (opts.violations && opts.violations.length) {
+    const wsV = wb.addSheet('Vi phạm')
+    wsV.cell('A1').value('Mức QC')
+    wsV.cell('B1').value('Ngày')
+    wsV.cell('C1').value('Giá trị')
+    wsV.cell('D1').value('Quy tắc')
+    let r = 2
+    opts.violations.forEach(v => {
+      wsV.row(r).cell(1).value(v.qc)
+      wsV.row(r).cell(2).value(v.date)
+      wsV.row(r).cell(3).value(Number(v.value))
+      wsV.row(r).cell(4).value(v.rules)
+      r += 1
+    })
+  }
+
     ws.column(1).width(140)
     ws.column(2).width(60)
 
@@ -121,6 +153,8 @@ async function exportLJToExcelWithCharts_exceljs(opts: {
   charts: LjChartImage[]
   parameters?: Array<{ qc: string; mean: number; sd: number; cv?: number; cvRef?: number; unit?: string; exp?: string; method?: string }>
   exportedBy?: string
+  contributors?: Array<{ qc: string; members: string }>
+  violations?: Array<{ qc: string; date: string; value: number; rules: string }>
 }) {
   const ExcelJS = (await import('exceljs')).default
   const wb = new ExcelJS.Workbook()
@@ -153,6 +187,22 @@ async function exportLJToExcelWithCharts_exceljs(opts: {
     info.addRow(['Mức QC', 'Mean', 'SD', 'CV%', 'CV% REF', 'Unit', 'EXP', 'PP'])
     opts.parameters.forEach(p => {
       info.addRow([p.qc, p.mean || 0, p.sd || 0, p.cv ?? '', p.cvRef ?? '', p.unit ?? '', p.exp ?? '', p.method ?? ''])
+    })
+  }
+
+  if (opts.contributors && opts.contributors.length) {
+    const sheet = wb.addWorksheet('Thành viên')
+    sheet.addRow(['Mức QC', 'Thành viên'])
+    opts.contributors.forEach(c => {
+      sheet.addRow([c.qc, c.members || ''])
+    })
+  }
+
+  if (opts.violations && opts.violations.length) {
+    const sheet = wb.addWorksheet('Vi phạm')
+    sheet.addRow(['Mức QC', 'Ngày', 'Giá trị', 'Quy tắc'])
+    opts.violations.forEach(v => {
+      sheet.addRow([v.qc, v.date, v.value, v.rules])
     })
   }
 

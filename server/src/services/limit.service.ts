@@ -99,8 +99,18 @@ export async function listLimits(params: {
 }
 
 export async function createLimit(input: CreateLimitInput) {
-  return prisma.limit.create({ 
-    data: input,
+  // Use upsert to avoid unique constraint errors
+  return prisma.limit.upsert({
+    where: {
+      analyteId_lotId_qcLevelId_machineId: {
+        analyteId: input.analyteId,
+        lotId: input.lotId,
+        qcLevelId: input.qcLevelId,
+        machineId: input.machineId
+      }
+    },
+    update: input,
+    create: input,
     include: {
       analyte: {
         select: { id: true, code: true, name: true }

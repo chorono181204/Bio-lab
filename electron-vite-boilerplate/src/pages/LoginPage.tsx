@@ -87,7 +87,7 @@ const LoginPage: React.FC<{ onSuccess: (username: string, password: string) => P
         zIndex: 1000,
         fontWeight: 'bold'
       }}>
-        <div>Bs Vũ Thị Thuý Phương, Bs Trịnh Thị Thu Hoài - BVĐK số 1 tỉnh Lào Cai</div>
+        <div>CKI Vũ Thị Thuý Phương, Bs CKII Trịnh Thị Thu Hoài - BVĐK số 1 tỉnh Lào Cai</div>
       </div>
     </div>
   )

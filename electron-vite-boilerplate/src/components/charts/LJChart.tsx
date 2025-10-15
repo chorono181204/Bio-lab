@@ -1,12 +1,13 @@
 import React, { useMemo, useRef, useState } from 'react'
+import { evaluateWithRules } from '../../utils/westgard-dynamic'
 import dayjs from 'dayjs'
 // Westgard sequence checks are disabled for LJ chart coloring per request
 
 export type Point = { date: string; value: number }
 export type Limits = { mean: number; sd: number; unit?: string; cv?: number; cvRef?: number; exp?: string; method?: string }
 
-const LJChart: React.FC<{ title: string; points: Point[]; limits: Limits; width?: number; height?: number; onRef?: (el: SVGSVGElement|null)=>void }>
-  = ({ title, points, limits, width = 800, height = 220, onRef }) => {
+const LJChart: React.FC<{ title: string; points: Point[]; limits: Limits; width?: number; height?: number; onRef?: (el: SVGSVGElement|null)=>void; westgardRules?: Array<{ code: string; severity: 'warning'|'error'|'critical'; params: any }> }>
+  = ({ title, points, limits, width = 800, height = 220, onRef, westgardRules = [] }) => {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const padding = { left: 70, right: 10, top: 30, bottom: 40 }
   const CELL_WIDTH = 40
@@ -74,7 +75,18 @@ const LJChart: React.FC<{ title: string; points: Point[]; limits: Limits; width?
     { label: 'Mean', value: limits.mean, color: '#1677ff' }
   ]
 
-  // No sequence-based Westgard evaluation here
+  // Evaluate Westgard per point (sequential window)
+  const evaluations = useMemo(() => {
+    if (!points?.length || !isFinite(limits.sd) || limits.sd === 0 || !westgardRules?.length) return {}
+    const results: Record<number, { level: 'pass'|'warning'|'error'|'critical'; violated: string[] }> = {}
+    const values: number[] = []
+    for (let i = 0; i < points.length; i++) {
+      values.push(Number(points[i].value))
+      const r = evaluateWithRules(values, Number(limits.mean), Number(limits.sd), westgardRules)
+      results[i] = r
+    }
+    return results
+  }, [points, limits, westgardRules])
 
   return (
     <div className="lj-chart-card" style={{ marginBottom: 12, position: 'relative' }}>
@@ -128,7 +140,11 @@ const LJChart: React.FC<{ title: string; points: Point[]; limits: Limits; width?
         })}
         {(points || []).map((p, i) => {
           // Simple coloring: based on z-score only
-          const getPointColor = (value: number) => {
+          const getPointColor = (value: number, idx: number) => {
+            const st = (evaluations as any)[idx]
+            if (st?.level === 'critical') return '#722ed1'
+            if (st?.level === 'error') return '#ff4d4f'
+            if (st?.level === 'warning') return '#faad14'
             const { mean, sd } = limits
             if (!sd || !isFinite(sd)) return '#52c41a'
             const z = Math.abs((value - mean) / sd)
@@ -145,7 +161,8 @@ const LJChart: React.FC<{ title: string; points: Point[]; limits: Limits; width?
             return ''
           }
           
-          const pointColor = getPointColor(p.value)
+          const pointColor = getPointColor(p.value, i)
+          const st = (evaluations as any)[i]
           const cvWarning = getCVWarning()
           
           return (
@@ -170,7 +187,7 @@ const LJChart: React.FC<{ title: string; points: Point[]; limits: Limits; width?
                 onMouseEnter={(e)=> setTip({ 
                   x: e.clientX, 
                   y: e.clientY, 
-                  text: `${dayjs(p.date).format('DD/MM')} • ${p.value}${cvWarning ? ` • ${cvWarning}` : ''}` 
+                  text: `${dayjs(p.date).format('DD/MM')} • ${p.value}${st && st.level !== 'pass' ? ` • ${st.violated.join(', ')}` : ''}${cvWarning ? ` • ${cvWarning}` : ''}` 
                 })}
                 onMouseLeave={()=> setTip(null)}
               />

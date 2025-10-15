@@ -27,13 +27,15 @@ const EntryPage: React.FC = () => {
   const [loading, setLoading] = useState(false)
   
   const [analyteOptions, setAnalyteOptions] = useState<{ value: string; label: string }[]>([])
-  const [searchText, setSearchText] = useState('')
+  const [selectedAnalyteId, setSelectedAnalyteId] = useState<string>('')
   const [open, setOpen] = useState(false)
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editValue, setEditValue] = useState<number | undefined>(undefined)
   const [editDate, setEditDate] = useState<any>(undefined)
   const [editEntryId, setEditEntryId] = useState<string | undefined>(undefined)
   const [form] = Form.useForm<any>()
+
+  // Removed department filter
 
   // Filter states
   const [qcSelect, setQcSelect] = useState<string>('QC1')
@@ -137,8 +139,11 @@ const EntryPage: React.FC = () => {
           loadWestgardRules()
         ])
         if (!mounted) return
+        
+        // Load lots
         const lots = (Array.isArray(lotsResponse.data) ? lotsResponse.data : lotsResponse.data?.items || []).map((l: any) => ({ value: l.code, label: l.code, id: l.id }))
         setLotOptions(lots)
+        
         // Auto-select first lot if none selected
         if (!selectedLotId && lots.length > 0) {
           setSelectedLot(lots[0].value)
@@ -303,7 +308,7 @@ const EntryPage: React.FC = () => {
     return () => { mounted = false }
   }, [selectedLotId, selectedMachine])
 
-  // Load analytes
+  // Load analytes (all for current scope)
   useEffect(() => {
     let mounted = true
     const load = async () => {
@@ -334,6 +339,7 @@ const EntryPage: React.FC = () => {
         selectedLotId,
         selectedMachine,
         qcLevelId,
+        selectedAnalyteId,
         range: range?.map(r => r?.format('YYYY-MM-DD'))
       })
       
@@ -347,7 +353,7 @@ const EntryPage: React.FC = () => {
       const startDate = range?.[0]?.format('YYYY-MM-DD')
       const endDate = range?.[1]?.format('YYYY-MM-DD')
       
-      const params = {
+      const params: any = {
         lotId: selectedLotId,
         qcLevelId, 
         machineId: selectedMachine,
@@ -355,6 +361,10 @@ const EntryPage: React.FC = () => {
         dateTo: endDate,
         page: currentPage,
         pageSize: pageSize
+      }
+      // optional analyte filter
+      if (selectedAnalyteId) {
+        params.analyteId = selectedAnalyteId
       }
       
       console.log('Debug - calling API with params:', params)
@@ -385,7 +395,7 @@ const EntryPage: React.FC = () => {
   // Load entries - chỉ load khi có đủ lot + machine + qcLevel
   useEffect(() => {
     loadEntriesData()
-  }, [selectedLotId, selectedMachine, qcLevelId, range, currentPage, pageSize])
+  }, [selectedLotId, selectedMachine, qcLevelId, selectedAnalyteId, range, currentPage, pageSize])
 
   // Compute Westgard status per entry whenever data/spec changes
   useEffect(() => {
@@ -400,9 +410,9 @@ const EntryPage: React.FC = () => {
     if (!entries.length || !Object.keys(limitMap).length || !westgardRules.length) { 
       console.log('Missing data for Westgard evaluation, skipping...')
       setEntryStatus({}); 
-      return 
+      return
     }
-    
+
     const groups: Record<string, Entry[]> = {}
     entries.forEach(e => {
       const k = e.analyteId
@@ -444,13 +454,7 @@ const EntryPage: React.FC = () => {
     setEntryStatus(st)
   }, [entries, limitMap, westgardRules])
 
-  // Filter entries by search text
-  const filteredEntries = useMemo(() => {
-    if (!searchText.trim()) return entries
-    return entries.filter(entry => 
-      entry.analyteName.toLowerCase().includes(searchText.toLowerCase())
-    )
-  }, [entries, searchText])
+  // Removed search filter
 
   // Debug log for entries data
   useEffect(() => {
@@ -695,6 +699,7 @@ const EntryPage: React.FC = () => {
 
       {/* Controls */}
       <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+        
         <Select
           placeholder="Chọn lô"
           value={selectedLot}
@@ -742,6 +747,15 @@ const EntryPage: React.FC = () => {
           onChange={setRange}
           format="DD/MM/YYYY"
         />
+        {/* Analyte dropdown filter (after other filters) */}
+        <Select
+          placeholder="Chọn xét nghiệm"
+          value={selectedAnalyteId}
+          onChange={(value) => setSelectedAnalyteId(value)}
+          options={analyteOptions}
+          style={{ width: 260 }}
+          allowClear
+        />
         <Button 
           type="primary" 
           onClick={onCreate} 
@@ -765,12 +779,13 @@ const EntryPage: React.FC = () => {
               const startDate = range?.[0]?.format('YYYY-MM-DD')
               const endDate = range?.[1]?.format('YYYY-MM-DD')
               const params: any = {
-                lotId: selectedLotId,
-                qcLevelId: qcLevelId,
+            lotId: selectedLotId,
+            qcLevelId: qcLevelId,
                 machineId: selectedMachine,
                 dateFrom: startDate,
                 dateTo: endDate
               }
+              if (selectedAnalyteId) params.analyteId = selectedAnalyteId
               const allEntries = await fetchAllPaginated(entryService.list as any, params, 1000)
 
               // Compute warnings for all entries using current limits and rules
@@ -809,19 +824,13 @@ const EntryPage: React.FC = () => {
         >
           Xuất ra file
         </Button>
-        <Input.Search
-          placeholder="Tìm kiếm xét nghiệm..."
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          style={{ width: 300 }}
-          allowClear
-        />
+        
       </Space>
 
       {/* Table */}
       <Table
         columns={columns}
-        dataSource={filteredEntries}
+        dataSource={entries}
         rowKey="id"
         loading={loading}
         pagination={{
