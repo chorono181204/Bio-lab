@@ -103,12 +103,39 @@ export async function deleteViolation(id: string) {
   return prisma.violation.delete({ where: { id } })
 }
 
+// Delete all violations for a specific entry
+export async function deleteViolationsForEntry(entryId: string) {
+  return prisma.violation.deleteMany({
+    where: { entryId }
+  })
+}
+
+// Re-evaluate violations for an entry (delete old ones and create new ones)
+export async function reevaluateViolationsForEntry(entryData: {
+  analyteId: string
+  lotId: string
+  qcLevelId: string
+  machineId: string
+  entryId: string
+  entryDate: Date
+  value: number
+  createdBy?: string
+  departmentId?: string | null
+}) {
+  // First delete existing violations for this entry
+  await deleteViolationsForEntry(entryData.entryId)
+  
+  // Then create new violations based on current value
+  return createViolationsForEntry(entryData)
+}
+
 // Auto-create violations when adding new entry
 export async function createViolationsForEntry(entryData: {
   analyteId: string
   lotId: string
   qcLevelId: string
   machineId: string
+  entryId: string
   entryDate: Date
   value: number
   createdBy?: string
@@ -155,7 +182,7 @@ export async function createViolationsForEntry(entryData: {
       return []
     }
 
-    const violations: Array<{ analyteId: string; lotId: string; qcLevelId: string; machineId: string; entryDate: Date; ruleId: string; content: string; status: string; createdBy: string | null }> = []
+    const violations: Array<{ analyteId: string; lotId: string; qcLevelId: string; machineId: string; entryId: string; entryDate: Date; ruleId: string; content: string; status: string; createdBy: string | null }> = []
     const { mean, sd } = limit
     const value = entryData.value
 
@@ -199,7 +226,20 @@ export async function createViolationsForEntry(entryData: {
     // Helper: check if all numbers have same sign as the first element
     const sameSideArr = (arr: number[]) => arr.length > 0 && arr.every(z => Math.sign(z) === Math.sign(arr[0]!))
 
-    // Evaluate each Westgard rule
+    // Rule priority hierarchy (higher number = higher priority)
+    const rulePriority: Record<string, number> = {
+      '1-3s': 6,    // Highest priority - Critical
+      '2-2s': 5,    // Critical
+      'R-4s': 4,    // Critical
+      '1-2s': 3,    // Warning
+      '2-3s': 2,    // Warning
+      '4-1s': 1,    // Warning
+      '10x': 0      // Lowest priority - Warning
+    }
+
+    // Evaluate each Westgard rule and collect violations
+    const ruleViolations: Array<{ rule: any; content: string; priority: number }> = []
+
     for (const rule of westgardRules) {
       let violated = false
       let content = ''
@@ -208,7 +248,6 @@ export async function createViolationsForEntry(entryData: {
         case '1-2s':
           if (Math.abs(value - mean) > 2 * sd) {
             violated = true
-            // Ví dụ: "Ngày 08/07, xét nghiệm ALT: QC1 vi phạm nguyên tắc 1-2s"
             content = `Ngày ${dateLabel}, xét nghiệm ${analyteLabel}: ${qcLevelLabel} vi phạm nguyên tắc 1-2s`
           }
           break
@@ -296,18 +335,36 @@ export async function createViolationsForEntry(entryData: {
       }
 
       if (violated) {
-        violations.push({
-          analyteId: entryData.analyteId,
-          lotId: entryData.lotId,
-          qcLevelId: entryData.qcLevelId,
-          machineId: entryData.machineId,
-          entryDate: entryData.entryDate,
-          ruleId: rule.id,
+        const priority = rulePriority[rule.code] || 0
+        ruleViolations.push({
+          rule,
           content,
-          status: 'pending',
-          createdBy: entryData.createdBy ?? null
+          priority
         })
       }
+    }
+
+    // Only create violation for the highest priority rule
+    if (ruleViolations.length > 0) {
+      // Sort by priority (highest first)
+      ruleViolations.sort((a, b) => b.priority - a.priority)
+      const highestPriorityViolation = ruleViolations[0]!
+      
+      violations.push({
+        analyteId: entryData.analyteId,
+        lotId: entryData.lotId,
+        qcLevelId: entryData.qcLevelId,
+        machineId: entryData.machineId,
+        entryId: entryData.entryId,
+        entryDate: entryData.entryDate,
+        ruleId: highestPriorityViolation.rule.id,
+        content: highestPriorityViolation.content,
+        status: 'pending',
+        createdBy: entryData.createdBy ?? null
+      })
+      
+      console.log(`Selected highest priority violation: ${highestPriorityViolation.rule.code} (priority: ${highestPriorityViolation.priority})`)
+      console.log(`Total violations found: ${ruleViolations.length}, created: 1`)
     }
 
     console.log('Evaluated violations:', violations.length)

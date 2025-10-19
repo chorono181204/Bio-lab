@@ -1,6 +1,6 @@
 import { prisma } from '../config/db'
 import type { CreateEntryInput, UpdateEntryInput, EntryListParams } from '../libs/types/entry'
-import { createViolationsForEntry } from './violation.service'
+import { createViolationsForEntry, reevaluateViolationsForEntry, deleteViolationsForEntry } from './violation.service'
 
 export async function getEntryById(id: string) {
   return prisma.entry.findUnique({ 
@@ -132,6 +132,7 @@ export async function createEntry(input: CreateEntryInput) {
         lotId: entry.lotId,
         qcLevelId: entry.qcLevelId,
         machineId: entry.machineId,
+        entryId: entry.id,
         entryDate: entry.entryDate,
         value: entry.value,
         ...(entry.createdBy ? { createdBy: entry.createdBy } : {}),
@@ -166,7 +167,14 @@ export async function createEntry(input: CreateEntryInput) {
 export async function updateEntry(input: UpdateEntryInput) {
   const { id, ...data } = input
   const { date, ...restData } = data
-  return prisma.entry.update({ 
+  
+  // Get the entry before updating to check if value changed
+  const existingEntry = await prisma.entry.findUnique({ where: { id } })
+  if (!existingEntry) {
+    throw new Error('Entry not found')
+  }
+  
+  const updatedEntry = await prisma.entry.update({ 
     where: { id }, 
     data: {
       ...restData,
@@ -187,8 +195,39 @@ export async function updateEntry(input: UpdateEntryInput) {
       }
     }
   })
+  
+  // Re-evaluate violations if value or date changed
+  const valueChanged = restData.value !== undefined && restData.value !== existingEntry.value
+  const dateChanged = date && new Date(date).getTime() !== existingEntry.entryDate.getTime()
+  
+  if (valueChanged || dateChanged) {
+    try {
+      console.log('Re-evaluating violations for updated entry...')
+      await reevaluateViolationsForEntry({
+        analyteId: updatedEntry.analyteId,
+        lotId: updatedEntry.lotId,
+        qcLevelId: updatedEntry.qcLevelId,
+        machineId: updatedEntry.machineId,
+        entryId: updatedEntry.id,
+        entryDate: updatedEntry.entryDate,
+        value: updatedEntry.value,
+        ...(updatedEntry.updatedBy ? { createdBy: updatedEntry.updatedBy } : {}),
+        departmentId: (updatedEntry as any).departmentId || null
+      })
+      console.log('Violations re-evaluated successfully')
+    } catch (error) {
+      console.error('Error re-evaluating violations:', error)
+      // Don't fail the update if violation re-evaluation fails
+    }
+  }
+  
+  return updatedEntry
 }
 
 export async function deleteEntry(id: string) {
+  // Delete violations first
+  await deleteViolationsForEntry(id)
+  
+  // Then delete the entry
   return prisma.entry.delete({ where: { id } })
 }

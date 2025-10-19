@@ -18,6 +18,7 @@ export type QCLimitFormValues = {
   peerGroup?: number
   biasEqa?: number
   qcName?: string
+  inputDate?: any  // Ngày nhập
   exp?: any
   method?: string
   note?: string
@@ -267,6 +268,9 @@ const QCLimitForm: React.FC<Props> = ({ form, analyteOptions, lotOptions, machin
       <div style={{ marginBottom: 16 }}>
         <h4 style={{ margin: '0 0 12px 0', color: '#1677ff' }}>Thông tin bổ sung</h4>
         <Space size={12} style={{ display: 'flex' }} wrap>
+          <Form.Item name="inputDate" label="Ngày nhập" style={{ width: 220 }}>
+            <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" placeholder="Chọn ngày nhập" />
+          </Form.Item>
           <Form.Item name="biasMethod" label="Cách tính BIAS" style={{ width: 220 }}>
             <BiasMethodManager 
               value={form.getFieldValue('biasMethod')}

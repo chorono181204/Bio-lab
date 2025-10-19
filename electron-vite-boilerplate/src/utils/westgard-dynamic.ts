@@ -46,16 +46,20 @@ export function evaluateWithRules(values: number[], mean: number, sd: number, ru
   const latest = values[values.length - 1]
   const z = (latest - mean) / sd
   console.log('latest value:', latest, 'z-score:', z)
-  const history = values.slice(0, -1)
-  const violated: string[] = []
-  let highest: EvalResult['level'] = 'pass'
 
-  const setLevel = (sev: 'warning'|'error'|'critical', code: string) => {
-    violated.push(code)
-    if (sev === 'critical' || (sev === 'error' && highest !== 'critical') || (sev === 'warning' && highest === 'pass')) {
-      highest = sev
-    }
+  // Rule priority hierarchy (same as backend - higher number = higher priority)
+  const rulePriority: Record<string, number> = {
+    '1-3s': 6,    // Highest priority - Critical
+    '2-2s': 5,    // Critical
+    'R-4s': 4,    // Critical
+    '1-2s': 3,    // Warning
+    '2-3s': 2,    // Warning
+    '4-1s': 1,    // Warning
+    '10x': 0      // Lowest priority - Warning
   }
+
+  // Evaluate all rules and collect violations
+  const ruleViolations: Array<{ rule: any; code: string; severity: 'warning'|'error'|'critical'; priority: number }> = []
 
   for (const r of rules) {
     console.log(`Evaluating rule: ${r.code} (${r.params.type})`)
@@ -148,10 +152,31 @@ export function evaluateWithRules(values: number[], mean: number, sd: number, ru
     }
 
     if (triggered) {
-      console.log(`${ruleType} TRIGGERED! Setting level to ${r.severity}`)
-      setLevel(r.severity, r.params.type)
+      console.log(`${ruleType} TRIGGERED!`)
+      const priority = rulePriority[ruleType] || 0
+      ruleViolations.push({
+        rule: r,
+        code: ruleType,
+        severity: r.severity,
+        priority
+      })
     }
   }
 
-  return { level: highest, violated }
+  // Only return the highest priority violation (same as backend)
+  if (ruleViolations.length > 0) {
+    // Sort by priority (highest first)
+    ruleViolations.sort((a, b) => b.priority - a.priority)
+    const highestPriorityViolation = ruleViolations[0]!
+    
+    console.log(`Selected highest priority violation: ${highestPriorityViolation.code} (priority: ${highestPriorityViolation.priority})`)
+    console.log(`Total violations found: ${ruleViolations.length}, returning: 1`)
+    
+    return { 
+      level: highestPriorityViolation.severity, 
+      violated: [highestPriorityViolation.code] 
+    }
+  }
+
+  return { level: 'pass', violated: [] }
 }

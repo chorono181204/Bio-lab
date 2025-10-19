@@ -99,6 +99,13 @@ export async function listLimits(params: {
 }
 
 export async function createLimit(input: CreateLimitInput) {
+  // Process date fields
+  const processedInput = {
+    ...input,
+    inputDate: input.inputDate ? new Date(input.inputDate) : undefined,
+    exp: input.exp ? new Date(input.exp) : undefined,
+  }
+  
   // Use upsert to avoid unique constraint errors
   return prisma.limit.upsert({
     where: {
@@ -109,8 +116,8 @@ export async function createLimit(input: CreateLimitInput) {
         machineId: input.machineId
       }
     },
-    update: input,
-    create: input,
+    update: processedInput,
+    create: processedInput,
     include: {
       analyte: {
         select: { id: true, code: true, name: true }
@@ -133,27 +140,63 @@ export async function createLimit(input: CreateLimitInput) {
 
 export async function updateLimit(input: UpdateLimitInput) {
   const { id, ...data } = input
-  return prisma.limit.update({ 
-    where: { id }, 
-    data,
-    include: {
-      analyte: {
-        select: { id: true, code: true, name: true }
-      },
-      lot: {
-        select: { id: true, code: true, lotName: true }
-      },
-      qcLevel: {
-        select: { id: true, name: true }
-      },
-      machine: {
-        select: { id: true, deviceCode: true, name: true }
-      },
-      biasMethod: {
-        select: { id: true, name: true }
+  
+  // Process date fields
+  const processedData = {
+    ...data,
+    inputDate: data.inputDate ? new Date(data.inputDate) : undefined,
+    exp: data.exp ? new Date(data.exp) : undefined,
+  }
+  
+  try {
+    // Normal update first
+    return await prisma.limit.update({ 
+      where: { id }, 
+      data: processedData,
+      include: {
+        analyte: { select: { id: true, code: true, name: true } },
+        lot: { select: { id: true, code: true, lotName: true } },
+        qcLevel: { select: { id: true, name: true } },
+        machine: { select: { id: true, deviceCode: true, name: true } },
+        biasMethod: { select: { id: true, name: true } }
+      }
+    })
+  } catch (err: any) {
+    // Handle unique collision when changing composite key to an existing one
+    if (err?.code === 'P2002' && processedData.analyteId && processedData.lotId && processedData.qcLevelId && processedData.machineId) {
+      const existing = await prisma.limit.findUnique({
+        where: {
+          analyteId_lotId_qcLevelId_machineId: {
+            analyteId: processedData.analyteId as string,
+            lotId: processedData.lotId as string,
+            qcLevelId: processedData.qcLevelId as string,
+            machineId: processedData.machineId as string,
+          }
+        }
+      })
+      if (existing) {
+        // Update the existing record with incoming fields (non-unique fields), then delete the old record
+        const { analyteId, lotId, qcLevelId, machineId, ...rest } = processedData as any
+        const updated = await prisma.limit.update({
+          where: { id: existing.id },
+          data: rest,
+          include: {
+            analyte: { select: { id: true, code: true, name: true } },
+            lot: { select: { id: true, code: true, lotName: true } },
+            qcLevel: { select: { id: true, name: true } },
+            machine: { select: { id: true, deviceCode: true, name: true } },
+            biasMethod: { select: { id: true, name: true } }
+          }
+        })
+        if (existing.id !== id) {
+          // Best-effort cleanup of the old record
+          try { await prisma.limit.delete({ where: { id } }) } catch {}
+        }
+        return updated
       }
     }
-  })
+    throw err
+  }
 }
 
 export async function deleteLimit(id: string) {

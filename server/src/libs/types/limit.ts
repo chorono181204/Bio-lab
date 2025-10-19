@@ -14,6 +14,11 @@ export interface Limit {
   peerGroup?: number
   biasEqa?: number
   biasMethodId?: string
+  qcName?: string
+  inputDate?: Date
+  exp?: Date
+  method?: string
+  note?: string
   createdBy?: string
   updatedBy?: string
   createdAt: Date
@@ -59,6 +64,7 @@ export interface CreateLimitInput {
   biasEqa?: number
   biasMethodId?: string
   qcName?: string
+  inputDate?: Date | string
   exp?: Date | string
   method?: string
   note?: string
@@ -81,6 +87,11 @@ export interface UpdateLimitInput {
   peerGroup?: number
   biasEqa?: number
   biasMethodId?: string
+  qcName?: string
+  inputDate?: Date | string
+  exp?: Date | string
+  method?: string
+  note?: string
   updatedBy?: string
 }
 

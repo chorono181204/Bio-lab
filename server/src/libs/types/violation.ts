@@ -4,6 +4,7 @@ export type ViolationDTO = {
   lotId: string
   qcLevelId: string
   machineId: string
+  entryId?: string | null
   entryDate: Date
   ruleId: string
   content: string
@@ -22,6 +23,7 @@ export type CreateViolationInput = {
   lotId: string
   qcLevelId: string
   machineId: string
+  entryId?: string | null
   entryDate: Date
   ruleId: string
   content: string

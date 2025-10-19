@@ -4,7 +4,7 @@ import dayjs from 'dayjs'
 // Westgard sequence checks are disabled for LJ chart coloring per request
 
 export type Point = { date: string; value: number }
-export type Limits = { mean: number; sd: number; unit?: string; cv?: number; cvRef?: number; exp?: string; method?: string }
+export type Limits = { mean: number; sd: number; unit?: string; cv?: number; cvRef?: number; exp?: string; inputDate?: string; method?: string }
 
 const LJChart: React.FC<{ title: string; points: Point[]; limits: Limits; width?: number; height?: number; onRef?: (el: SVGSVGElement|null)=>void; westgardRules?: Array<{ code: string; severity: 'warning'|'error'|'critical'; params: any }> }>
   = ({ title, points, limits, width = 800, height = 220, onRef, westgardRules = [] }) => {
@@ -96,7 +96,8 @@ const LJChart: React.FC<{ title: string; points: Point[]; limits: Limits; width?
         <span>MEAN: {isFinite(derived.mean) ? Number(derived.mean.toFixed(2)) : '-'}</span>
         <span>SD: {isFinite(derived.sd) ? Number(derived.sd.toFixed(2)) : '-'}</span>
         {isFinite(derived.cv) && <span>CV%: {Number(derived.cv.toFixed(2))}</span>}
-        {limits.exp && <span>EXP: {dayjs(limits.exp).format('DD/MM/YYYY')}</span>}
+        {limits.inputDate && <span>Ngày nhập: {dayjs(limits.inputDate).format('DD/MM/YYYY')}</span>}
+        {limits.exp && <span>Ngày hết hạn: {dayjs(limits.exp).format('DD/MM/YYYY')}</span>}
         {limits.unit && <span>Unit: {limits.unit}</span>}
         {limits.method && <span>PP: {limits.method}</span>}
         {/* Removed +2SD / -2SD inline display per request */}

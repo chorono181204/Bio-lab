@@ -20,6 +20,7 @@ export interface QCLimit {
   cvRef?: number
   peerGroup?: number
   biasEqa?: number
+  inputDate?: string
   exp?: string
   method?: string
   note?: string
@@ -59,10 +60,12 @@ export interface CreateQCLimitInput {
   decimals?: number
   mean: number
   sd: number
+  cv?: number
   tea?: number
   cvRef?: number
   peerGroup?: number
   biasEqa?: number
+  inputDate?: string
   exp?: string
   method?: string
   note?: string
@@ -105,6 +108,7 @@ const mapLimitData = (limit: any): QCLimit => ({
   cvRef: limit.cvRef,
   peerGroup: limit.peerGroup,
   biasEqa: limit.biasEqa,
+  inputDate: limit.inputDate,
   exp: limit.exp,
   method: limit.method,
   note: limit.note,

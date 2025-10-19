@@ -131,8 +131,7 @@ const LJPage: React.FC = () => {
   const [limitsByLevel, setLimitsByLevel] = useState<Record<string, Limits | null>>({})
   const [pointsByLevel, setPointsByLevel] = useState<Record<string, Point[]>>({})
   const [contributorsByLevel, setContributorsByLevel] = useState<Record<string, string[]>>({})
-  const qc1Ref = useRef<SVGSVGElement|null>(null)
-  const qc2Ref = useRef<SVGSVGElement|null>(null)
+  const chartRefs = useRef<Array<SVGSVGElement|null>>([])
   const [activeTab, setActiveTab] = useState(0)
   const [noteText, setNoteText] = useState('')
   const [westgardRules, setWestgardRules] = useState<Array<{ code: string; severity: 'warning'|'error'|'critical'; params: any }>>([])
@@ -367,7 +366,10 @@ const LJPage: React.FC = () => {
           const limitsByLevel: Record<string, any> = {}
           limits.forEach((limit: any) => {
             if (limit.qcLevelId) {
-              limitsByLevel[limit.qcLevelId] = limit
+              limitsByLevel[limit.qcLevelId] = {
+                ...limit,
+                inputDate: (limit as any).inputDate
+              }
             }
           })
           setLimitsByLevel(limitsByLevel)
@@ -492,16 +494,44 @@ const LJPage: React.FC = () => {
             const rangeText = range && range[0] && range[1] ? `${range[0].format('DD/MM/YYYY')} - ${range[1].format('DD/MM/YYYY')}` : ''
             const qcNames = (qcLevels || []).map(l => l.name)
             const chartsImgs: { title: string; pngDataUrl: string }[] = []
-            if (qc1Ref.current) chartsImgs.push({ title: qcNames[0] || 'QC1', pngDataUrl: await svgToPngDataUrl(qc1Ref.current) })
-            if (qc2Ref.current) chartsImgs.push({ title: qcNames[1] || 'QC2', pngDataUrl: await svgToPngDataUrl(qc2Ref.current) })
+            // Export all rendered charts dynamically
+            for (let i = 0; i < chartRefs.current.length; i++) {
+              const el = chartRefs.current[i]
+              if (el) {
+                chartsImgs.push({ title: qcNames[i] || `QC${i + 1}`, pngDataUrl: await svgToPngDataUrl(el) })
+              }
+            }
             const params = (qcLevels || []).map(lvl => {
-              const lim = limitsByLevel[lvl.id] || { mean: 0, sd: 0, cv: undefined as any, cvRef: undefined as any, unit: undefined as any, exp: undefined as any, method: undefined as any }
-              return { qc: lvl.name, mean: lim.mean, sd: lim.sd, cv: lim.cv, cvRef: lim.cvRef, unit: lim.unit, exp: lim.exp ? dayjs(lim.exp).format('DD/MM/YYYY') : undefined, method: lim.method }
+              const lim = limitsByLevel[lvl.id] || { mean: 0, sd: 0, cv: undefined as any, cvRef: undefined as any, unit: undefined as any, inputDate: undefined as any, exp: undefined as any, method: undefined as any }
+              return { 
+                qc: lvl.name, 
+                mean: lim.mean, 
+                sd: lim.sd, 
+                cv: lim.cv, 
+                cvRef: lim.cvRef, 
+                unit: lim.unit, 
+                inputDate: lim.inputDate ? dayjs(lim.inputDate).format('DD/MM/YYYY') : undefined,
+                exp: lim.exp ? dayjs(lim.exp).format('DD/MM/YYYY') : undefined, 
+                method: lim.method 
+              }
             })
-            const contributorsForExport = (qcLevels || []).map(lvl => ({
-              qc: lvl.name,
-              members: (contributorsByLevel[lvl.id] || []).join(', ')
-            }))
+            // Build contributors by entry (per QC level)
+            const contributorsEntries: Array<{ qc: string; date: string; value: number; createdBy?: string; updatedBy?: string }> = []
+            for (const lvl of (qcLevels || [])) {
+              const entriesResp = await entryService.list({
+                lotId: selectedLotId,
+                machineId: selectedMachine,
+                qcLevelId: lvl.id,
+                analyteId: activeAnalyte,
+                page: 1,
+                pageSize: 1000
+              })
+              const entries = entriesResp.success && entriesResp.data ? ('items' in entriesResp.data ? entriesResp.data.items : entriesResp.data) : []
+              ;(entries || []).forEach((e: any) => {
+                const d = (e.entryDate || e.date || e.createdAt)
+                contributorsEntries.push({ qc: lvl.name, date: dayjs(d).format('DD/MM/YYYY'), value: Number(e.value), createdBy: e.createdBy, updatedBy: e.updatedBy })
+              })
+            }
             // Build violation rows per QC
             const violationsForExport: Array<{ qc: string; date: string; value: number; rules: string }> = []
             for (const lvl of (qcLevels || [])) {
@@ -528,7 +558,7 @@ const LJPage: React.FC = () => {
               charts: chartsImgs,
               parameters: params,
               exportedBy: `${userFullName || ''}${userPosition ? ` (${userPosition})` : ''}`,
-              contributors: contributorsForExport,
+              contributorsEntries,
               violations: violationsForExport,
               filename: `lj_${analyteName}_${Date.now()}.xlsx`
             } as any)
@@ -639,8 +669,7 @@ const LJPage: React.FC = () => {
                   limits={chart.limits} 
                   westgardRules={westgardRules}
                   onRef={(el) => {
-                    if (index === 0) qc1Ref.current = el
-                    else if (index === 1) qc2Ref.current = el
+                    chartRefs.current[index] = el
                   }} 
                 />
                 {names.length > 0 && (
@@ -670,7 +699,8 @@ const LJPage: React.FC = () => {
               <div>* Unit: {chart.limits.unit || '-'}</div>
               <div>* CV%: {chart.limits.cv ? `${chart.limits.cv}%` : '-'}</div>
               <div>* CV% REF: {chart.limits.cvRef ? `${chart.limits.cvRef}%` : '-'}</div>
-              {chart.limits.exp && <div>* EXP: {dayjs(chart.limits.exp).format('DD/MM/YYYY')}</div>}
+              {chart.limits.inputDate && <div>* Ngày nhập: {dayjs(chart.limits.inputDate).format('DD/MM/YYYY')}</div>}
+              {chart.limits.exp && <div>* Ngày hết hạn: {dayjs(chart.limits.exp).format('DD/MM/YYYY')}</div>}
               {chart.limits.method && <div>* PP: {chart.limits.method}</div>}
               <div>* +2SD: {(chart.limits.mean + 2 * chart.limits.sd).toFixed(2)}</div>
               <div>* -2SD: {(chart.limits.mean - 2 * chart.limits.sd).toFixed(2)}</div>

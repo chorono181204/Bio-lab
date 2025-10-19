@@ -14,9 +14,10 @@ export async function exportLJToExcelWithCharts(opts: {
   rangeText?: string
   note?: string
   charts: LjChartImage[]
-  parameters?: Array<{ qc: string; mean: number; sd: number; cv?: number; cvRef?: number; unit?: string; exp?: string; method?: string }>
+  parameters?: Array<{ qc: string; mean: number; sd: number; cv?: number; cvRef?: number; unit?: string; inputDate?: string; exp?: string; method?: string }>
   exportedBy?: string
   contributors?: Array<{ qc: string; members: string }>
+  contributorsEntries?: Array<{ qc: string; date: string; value: number; createdBy?: string; updatedBy?: string }>
   violations?: Array<{ qc: string; date: string; value: number; rules: string }>
 }) {
   try {
@@ -57,8 +58,9 @@ export async function exportLJToExcelWithCharts(opts: {
     wsInfo.cell('D1').value('CV%')
     wsInfo.cell('E1').value('CV% REF')
     wsInfo.cell('F1').value('Unit')
-    wsInfo.cell('G1').value('EXP')
-    wsInfo.cell('H1').value('PP')
+    wsInfo.cell('G1').value('Ngày nhập')
+    wsInfo.cell('H1').value('Ngày hết hạn')
+    wsInfo.cell('I1').value('PP')
     let r = 2
     opts.parameters.forEach(p => {
       wsInfo.row(r).cell(1).value(p.qc)
@@ -67,21 +69,28 @@ export async function exportLJToExcelWithCharts(opts: {
       if (p.cv !== undefined) wsInfo.row(r).cell(4).value(Number(p.cv))
       if (p.cvRef !== undefined) wsInfo.row(r).cell(5).value(Number(p.cvRef))
       if (p.unit) wsInfo.row(r).cell(6).value(p.unit)
-      if (p.exp) wsInfo.row(r).cell(7).value(p.exp)
-      if (p.method) wsInfo.row(r).cell(8).value(p.method)
+      if (p.inputDate) wsInfo.row(r).cell(7).value(p.inputDate)
+      if (p.exp) wsInfo.row(r).cell(8).value(p.exp)
+      if (p.method) wsInfo.row(r).cell(9).value(p.method)
       r += 1
     })
   }
 
-  // Contributors per QC
-  if (opts.contributors && opts.contributors.length) {
-    const wsContrib = wb.addSheet('Thành viên')
-    wsContrib.cell('A1').value('Mức QC')
-    wsContrib.cell('B1').value('Thành viên')
+  // Contributors per entry
+  if (opts.contributorsEntries && opts.contributorsEntries.length) {
+    const wsCE = wb.addSheet('Thành viên')
+    wsCE.cell('A1').value('Mức QC')
+    wsCE.cell('B1').value('Ngày')
+    wsCE.cell('C1').value('Giá trị')
+    wsCE.cell('D1').value('Người nhập')
+    wsCE.cell('E1').value('Người sửa')
     let r = 2
-    opts.contributors.forEach(c => {
-      wsContrib.row(r).cell(1).value(c.qc)
-      wsContrib.row(r).cell(2).value(c.members || '')
+    opts.contributorsEntries.forEach(row => {
+      wsCE.row(r).cell(1).value(row.qc)
+      wsCE.row(r).cell(2).value(row.date)
+      wsCE.row(r).cell(3).value(Number(row.value))
+      wsCE.row(r).cell(4).value(row.createdBy || '')
+      wsCE.row(r).cell(5).value(row.updatedBy || '')
       r += 1
     })
   }
@@ -151,9 +160,10 @@ async function exportLJToExcelWithCharts_exceljs(opts: {
   rangeText?: string
   note?: string
   charts: LjChartImage[]
-  parameters?: Array<{ qc: string; mean: number; sd: number; cv?: number; cvRef?: number; unit?: string; exp?: string; method?: string }>
+  parameters?: Array<{ qc: string; mean: number; sd: number; cv?: number; cvRef?: number; unit?: string; inputDate?: string; exp?: string; method?: string }>
   exportedBy?: string
   contributors?: Array<{ qc: string; members: string }>
+  contributorsEntries?: Array<{ qc: string; date: string; value: number; createdBy?: string; updatedBy?: string }>
   violations?: Array<{ qc: string; date: string; value: number; rules: string }>
 }) {
   const ExcelJS = (await import('exceljs')).default
@@ -184,17 +194,17 @@ async function exportLJToExcelWithCharts_exceljs(opts: {
 
   if (opts.parameters && opts.parameters.length) {
     const info = wb.addWorksheet('Thông số')
-    info.addRow(['Mức QC', 'Mean', 'SD', 'CV%', 'CV% REF', 'Unit', 'EXP', 'PP'])
+    info.addRow(['Mức QC', 'Mean', 'SD', 'CV%', 'CV% REF', 'Unit', 'Ngày nhập', 'Ngày hết hạn', 'PP'])
     opts.parameters.forEach(p => {
-      info.addRow([p.qc, p.mean || 0, p.sd || 0, p.cv ?? '', p.cvRef ?? '', p.unit ?? '', p.exp ?? '', p.method ?? ''])
+      info.addRow([p.qc, p.mean || 0, p.sd || 0, p.cv ?? '', p.cvRef ?? '', p.unit ?? '', p.inputDate ?? '', p.exp ?? '', p.method ?? ''])
     })
   }
 
-  if (opts.contributors && opts.contributors.length) {
+  if (opts.contributorsEntries && opts.contributorsEntries.length) {
     const sheet = wb.addWorksheet('Thành viên')
-    sheet.addRow(['Mức QC', 'Thành viên'])
-    opts.contributors.forEach(c => {
-      sheet.addRow([c.qc, c.members || ''])
+    sheet.addRow(['Mức QC', 'Ngày', 'Giá trị', 'Người nhập', 'Người sửa'])
+    opts.contributorsEntries.forEach(e => {
+      sheet.addRow([e.qc, e.date, e.value, e.createdBy || '', e.updatedBy || ''])
     })
   }
 
