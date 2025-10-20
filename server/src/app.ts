@@ -17,6 +17,7 @@ import departmentRoutes from './routes/department.routes'
 import userRoutes from './routes/user.routes'
 import formRoutes from './routes/form.routes'
 import lookupRoutes from './routes/lookup.routes'
+import statsRoutes from './routes/stats.routes'
 import { authErrorHandler } from './middleware/authErrorHandler'
 import { errorLogger } from './middleware/errorLogger'
 
@@ -51,7 +52,7 @@ export function createApp() {
   app.use('/api/departments', departmentRoutes)
   app.use('/api/users', userRoutes)
   app.use('/api/forms', formRoutes)
-  app.use('/api/entries', entryRoutes)
+  app.use('/api/stats', statsRoutes)
 
   // Error handling middleware
   app.use(authErrorHandler)

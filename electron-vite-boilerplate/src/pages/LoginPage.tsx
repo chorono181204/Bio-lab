@@ -58,12 +58,12 @@ const LoginPage: React.FC<{ onSuccess: (username: string, password: string) => P
             <div style={{ color: '#ffc107', fontSize: 12, fontWeight: 400, fontStyle: 'italic', marginTop: 4 }}>More than a hospital</div>
           </div>
         </div>
-        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ username: 'admin', password: 'admin', serverUrl: (typeof localStorage !== 'undefined' && localStorage.getItem('serverUrl')) || 'http://localhost' }}>
+        <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ serverUrl: (typeof localStorage !== 'undefined' && localStorage.getItem('serverUrl')) || 'http://localhost' }}>
           <Form.Item name="username" label="Tài khoản" rules={[{ required: true }]}> 
-            <Input placeholder="admin" autoFocus />
+            <Input autoFocus />
           </Form.Item>
           <Form.Item name="password" label="Mật khẩu" rules={[{ required: true }]}>
-            <Input.Password placeholder="admin" />
+            <Input.Password />
           </Form.Item>
           <Form.Item name="serverUrl" label="URL máy chủ (QC Server)" tooltip="Ví dụ: http://192.168.102.100" rules={[{ required: true, message: 'Nhập URL máy chủ' }]}>
             <Input placeholder="http://localhost" onChange={(e)=>{

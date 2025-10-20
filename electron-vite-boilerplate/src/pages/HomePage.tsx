@@ -1,35 +1,85 @@
 import React, { useEffect, useState } from 'react'
-import { Skeleton } from 'antd'
-import { Stats } from '../components/Home/StatsTiles'
+import { Skeleton, Card, Row, Col, Statistic, Typography } from 'antd'
+import { Stats } from '../components/Home/OptionCards'
 import OptionCards from '../components/Home/OptionCards'
 import { useApi } from '../hooks'
-import { lookupService } from '../services'
+import { statsService } from '../services'
+
+const { Title } = Typography
 
 const HomePage: React.FC = () => {
-  const { data: apiData, loading, execute: loadStats } = useApi(lookupService.getInitData)
-  const [stats, setStats] = useState<Stats>({ users: 0, devices: 0, analytes: 0, qcLots: 0, entriesToday: 0 })
+  const { data: statsData, loading, execute: loadStats } = useApi(statsService.getStats)
+  const [stats, setStats] = useState<Stats>({ 
+    users: 0, 
+    devices: 0, 
+    analytes: 0, 
+    qcLots: 0, 
+    entriesToday: 0,
+    forms: 0,
+    lots: 0,
+    machines: 0,
+    entriesThisWeek: 0,
+    entriesThisMonth: 0,
+    violationsToday: 0,
+    violationsThisWeek: 0,
+    violationsThisMonth: 0
+  })
 
   useEffect(() => {
     loadStats()
   }, [])
 
   useEffect(() => {
-    if (apiData) {
-      // Calculate stats from API data
-      const statsData = {
-        users: 0, // TODO: Get from user service
-        devices: apiData.machines?.length || 0,
-        analytes: apiData.analytes?.length || 0,
-        qcLots: apiData.lots?.length || 0,
-        entriesToday: 0 // TODO: Calculate from entries data
-      }
+    if (statsData) {
+      console.log('=== STATS DATA RECEIVED ===')
+      console.log('Raw statsData:', statsData)
       setStats(statsData)
     }
-  }, [apiData])
+  }, [statsData])
 
   return (
     <div>
-      {/* Bỏ hàng thống kê trên theo yêu cầu, hiển thị số ngay trong option cards */}
+      {/* Thống kê tổng quan */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="Nhập liệu hôm nay"
+              value={stats.entriesToday}
+              valueStyle={{ color: '#3f8600' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="Nhập liệu tuần này"
+              value={stats.entriesThisWeek}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="Nhập liệu tháng này"
+              value={stats.entriesThisMonth}
+              valueStyle={{ color: '#722ed1' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="Vi phạm hôm nay"
+              value={stats.violationsToday}
+              valueStyle={{ color: '#cf1322' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Option Cards */}
       {loading ? <Skeleton active paragraph={{ rows: 6 }} /> : <OptionCards stats={stats} />}
     </div>
   )

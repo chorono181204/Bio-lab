@@ -10,7 +10,21 @@ export type Option = {
   onClick?: () => void
 }
 
-export type Stats = { users: number; devices: number; analytes: number; qcLots: number; entriesToday: number }
+export type Stats = { 
+  users: number; 
+  devices: number; 
+  analytes: number; 
+  qcLots: number; 
+  entriesToday: number;
+  forms: number;
+  lots: number;
+  machines: number;
+  entriesThisWeek: number;
+  entriesThisMonth: number;
+  violationsToday: number;
+  violationsThisWeek: number;
+  violationsThisMonth: number;
+}
 
 type Props = { onOpen?: (key: string) => void; stats?: Stats }
 
@@ -39,10 +53,10 @@ const OptionCards: React.FC<Props> = ({ onOpen, stats }) => {
             </div>
             {stats && (
               <span style={{ fontWeight: 800, color: op.key === 'devices' ? '#00897b' : op.key === 'analytes' ? '#6a1b9a' : op.key === 'lots' ? '#b7950b' : '#1976d2' }}>
-                {op.key === 'form' && stats.entriesToday}
+                {op.key === 'form' && stats.forms}
                 {op.key === 'analytes' && stats.analytes}
-                {op.key === 'lots' && stats.qcLots}
-                {op.key === 'devices' && stats.devices}
+                {op.key === 'lots' && stats.lots}
+                {op.key === 'devices' && stats.machines}
                 {op.key === 'users' && stats.users}
               </span>
             )}
