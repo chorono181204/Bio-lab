@@ -200,6 +200,15 @@ export async function updateEntry(input: UpdateEntryInput) {
   const valueChanged = restData.value !== undefined && restData.value !== existingEntry.value
   const dateChanged = date && new Date(date).getTime() !== existingEntry.entryDate.getTime()
   
+  console.log('=== ENTRY UPDATE DEBUG ===')
+  console.log('Existing value:', existingEntry.value)
+  console.log('New value:', restData.value)
+  console.log('Value changed:', valueChanged)
+  console.log('Existing date:', existingEntry.entryDate)
+  console.log('New date:', date)
+  console.log('Date changed:', dateChanged)
+  console.log('Will re-evaluate violations:', valueChanged || dateChanged)
+  
   if (valueChanged || dateChanged) {
     try {
       console.log('Re-evaluating violations for updated entry...')

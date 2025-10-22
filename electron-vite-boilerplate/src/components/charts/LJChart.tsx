@@ -3,7 +3,7 @@ import { evaluateWithRules } from '../../utils/westgard-dynamic'
 import dayjs from 'dayjs'
 // Westgard sequence checks are disabled for LJ chart coloring per request
 
-export type Point = { date: string; value: number }
+export type Point = { date: string; value: number; createdAt?: string; createdBy?: string; updatedBy?: string }
 export type Limits = { mean: number; sd: number; unit?: string; cv?: number; cvRef?: number; exp?: string; inputDate?: string; method?: string }
 
 const LJChart: React.FC<{ title: string; points: Point[]; limits: Limits; width?: number; height?: number; onRef?: (el: SVGSVGElement|null)=>void; westgardRules?: Array<{ code: string; severity: 'warning'|'error'|'critical'; params: any }> }>
@@ -188,7 +188,7 @@ const LJChart: React.FC<{ title: string; points: Point[]; limits: Limits; width?
                 onMouseEnter={(e)=> setTip({ 
                   x: e.clientX, 
                   y: e.clientY, 
-                  text: `${dayjs(p.date).format('DD/MM')} • ${p.value}${st && st.level !== 'pass' ? ` • ${st.violated.join(', ')}` : ''}${cvWarning ? ` • ${cvWarning}` : ''}` 
+                  text: `${dayjs(p.date).format('DD/MM')} • ${p.value}${p.createdBy ? ` • Người nhập: ${p.createdBy}` : ''}${p.updatedBy && p.updatedBy !== p.createdBy ? ` • Người sửa: ${p.updatedBy}` : ''}${st && st.level !== 'pass' ? ` • ${st.violated.join(', ')}` : ''}${cvWarning ? ` • ${cvWarning}` : ''}` 
                 })}
                 onMouseLeave={()=> setTip(null)}
               />

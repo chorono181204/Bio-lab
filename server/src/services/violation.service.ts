@@ -165,6 +165,40 @@ export async function createViolationsForEntry(entryData: {
 
     // Get Westgard rules for this QC level
     console.log('Looking for Westgard rules for QC level:', entryData.qcLevelId)
+    console.log('Entry department ID:', entryData.departmentId)
+    
+    // Let's also check the QC level details
+    const qcLevel = await prisma.qcLevel.findUnique({
+      where: { id: entryData.qcLevelId },
+      include: {
+        westgardRules: {
+          select: { id: true, code: true, departmentId: true }
+        }
+      }
+    })
+    console.log('QC Level details:', qcLevel ? {
+      id: qcLevel.id,
+      name: qcLevel.name,
+      departmentId: qcLevel.departmentId,
+      westgardRules: qcLevel.westgardRules
+    } : 'Not found')
+    
+    // First, let's see all Westgard rules
+    const allWestgardRules = await prisma.westgardRule.findMany({
+      include: {
+        qcLevels: {
+          select: { id: true, name: true }
+        }
+      }
+    })
+    console.log('All Westgard rules in database:', allWestgardRules.length)
+    console.log('All Westgard rules with QC levels:', allWestgardRules.map(r => ({ 
+      id: r.id, 
+      code: r.code, 
+      departmentId: r.departmentId,
+      qcLevels: r.qcLevels.map(qc => ({ id: qc.id, name: qc.name }))
+    })))
+    
     const westgardRules = await prisma.westgardRule.findMany({
       where: {
         qcLevels: {
@@ -175,7 +209,8 @@ export async function createViolationsForEntry(entryData: {
       }
     })
 
-    console.log('Found Westgard rules:', westgardRules.length)
+    console.log('Found Westgard rules for QC level:', westgardRules.length)
+    console.log('Westgard rules for QC level:', westgardRules.map(r => ({ id: r.id, code: r.code })))
 
     if (westgardRules.length === 0) {
       console.log('No Westgard rules found for QC level, skipping violation evaluation')

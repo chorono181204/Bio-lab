@@ -408,10 +408,24 @@ const LJPage: React.FC = () => {
             .map(r => ({ 
               // Prefer domain date field; fall back to possible aliases
               date: (r.entryDate || r.date || r.createdAt), 
-              value: Number(r.value) 
+              value: Number(r.value),
+              createdAt: r.createdAt, // Add createdAt for secondary sort
+              createdBy: r.createdBy, // Add createdBy for tooltip
+              updatedBy: r.updatedBy  // Add updatedBy for tooltip
             }))
             .filter(p => p.date && withinRange(p.date))
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+            .sort((a, b) => {
+              // First sort by date
+              const dateA = new Date(a.date).getTime()
+              const dateB = new Date(b.date).getTime()
+              if (dateA !== dateB) {
+                return dateA - dateB
+              }
+              // If same date, sort by createdAt
+              const createdA = new Date(a.createdAt).getTime()
+              const createdB = new Date(b.createdAt).getTime()
+              return createdA - createdB
+            })
         }
         
         const nextPoints: Record<string, Point[]> = {}

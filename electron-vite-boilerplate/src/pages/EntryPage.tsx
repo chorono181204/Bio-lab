@@ -33,6 +33,7 @@ const EntryPage: React.FC = () => {
   const [editValue, setEditValue] = useState<number | undefined>(undefined)
   const [editDate, setEditDate] = useState<any>(undefined)
   const [editEntryId, setEditEntryId] = useState<string | undefined>(undefined)
+  const [editEntryData, setEditEntryData] = useState<any>(undefined)
   const [form] = Form.useForm<any>()
 
   // Removed department filter
@@ -590,6 +591,7 @@ const EntryPage: React.FC = () => {
                 setEditValue(record.value)
                 setEditDate(dayjs(record.date))
                 setEditEntryId(record.id)
+                setEditEntryData(record) // Store full entry data for violation re-evaluation
                 setEditModalOpen(true)
               }}
             >
@@ -651,7 +653,7 @@ const EntryPage: React.FC = () => {
   // Removed onBatchSave - now using EntryForm
 
   const onEditSave = async () => {
-    if (!editEntryId || editValue === undefined || !editDate) {
+    if (!editEntryId || editValue === undefined || !editDate || !editEntryData) {
       message.warning('Không có dữ liệu để sửa')
       return
     }
@@ -661,12 +663,12 @@ const EntryPage: React.FC = () => {
         value: Number(editValue),
         date: editDate.format('YYYY-MM-DD')
       })
-      // Skip violation evaluation for now - simplified implementation
       message.success('Đã cập nhật dữ liệu')
       setEditModalOpen(false)
       setEditValue(undefined)
       setEditDate(undefined)
       setEditEntryId(undefined)
+      setEditEntryData(undefined)
       // Reload data
       console.log('=== RELOADING ENTRIES AFTER EDIT ===')
       try {
